@@ -6,6 +6,8 @@ namespace ImageSpace.Skia;
 /// <summary>Renderer-owned tone filters; immutable settings are the cache revision.</summary>
 internal sealed class AdjustmentFilterCache : IDisposable
 {
+    // The managed 3.119.2 binding rejects null channel arrays even when native Skia accepts them.
+    private static readonly byte[] IdentityAlpha = Enumerable.Range(0, 256).Select(value => (byte)value).ToArray();
     private sealed record Entry(AdjustmentKind Kind, CurvesAdjustment Curves, LevelsAdjustment Levels,
         float Opacity, SKColorFilter Filter);
     private readonly Dictionary<Guid, Entry> _entries = [];
@@ -23,7 +25,7 @@ internal sealed class AdjustmentFilterCache : IDisposable
                 var tables = layer.Adjustment == AdjustmentKind.Curves
                     ? RgbLookupTables.FromCurves(layer.Curves, layer.Opacity)
                     : RgbLookupTables.FromLevels(layer.Levels, layer.Opacity);
-                var filter = SKColorFilter.CreateTable(null, tables.Red.ToArray(), tables.Green.ToArray(), tables.Blue.ToArray());
+                var filter = SKColorFilter.CreateTable(IdentityAlpha, tables.Red.ToArray(), tables.Green.ToArray(), tables.Blue.ToArray());
                 entry?.Filter.Dispose();
                 entry = new Entry(layer.Adjustment, layer.Curves, layer.Levels, layer.Opacity, filter);
                 _entries[layer.Id] = entry;
