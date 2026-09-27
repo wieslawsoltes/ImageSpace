@@ -2,15 +2,28 @@
   <PropertyGroup>
     <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
     <TargetFrameworks Condition="'$(ImageSpaceDesktopOnly)' == 'true'">net10.0-desktop</TargetFrameworks>
-    <OutputType>Exe</OutputType><UnoSingleProject>true</UnoSingleProject><UnoFeatures>SkiaRenderer;</UnoFeatures>
-    <ApplicationTitle>ImageSpace</ApplicationTitle><ApplicationId>io.github.wieslawsoltes.imagespace</ApplicationId>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion><ApplicationVersion>1</ApplicationVersion><ApplicationPublisher>ImageSpace contributors</ApplicationPublisher>
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures>
+    <ApplicationTitle>ImageSpace</ApplicationTitle>
+    <ApplicationId>io.github.wieslawsoltes.imagespace</ApplicationId>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationPublisher>ImageSpace contributors</ApplicationPublisher>
     <Description>Local-first layered image editing with Uno Platform, Skia and WebGPU.</Description>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><IsPackable>false</IsPackable><RunAOTCompilation>false</RunAOTCompilation><WasmShellGenerateAOTProfile>false</WasmShellGenerateAOTProfile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <WasmShellGenerateAOTProfile>false</WasmShellGenerateAOTProfile>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../ImageSpace.Workbench/ImageSpace.Workbench.csproj" /><ProjectReference Include="../ImageSpace.WebGpu/ImageSpace.WebGpu.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ImageSpace.Workbench/ImageSpace.Workbench.csproj" />
+    <ProjectReference Include="../ImageSpace.WebGpu/ImageSpace.WebGpu.csproj" />
+  </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
     <EmbeddedResource Include="Platforms/WebAssembly/WasmScripts/Host.js" />
+    <EmbeddedResource Include="Platforms/WebAssembly/WasmScripts/AppManifest.js" />
     <EmbeddedResource Include="../ImageSpace.WebGpu/WebGpu.js" Link="Platforms/WebAssembly/WasmScripts/WebGpu.js" />
   </ItemGroup>
 </Project>
