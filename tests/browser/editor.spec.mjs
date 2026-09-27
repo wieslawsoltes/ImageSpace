@@ -1,12 +1,11 @@
 import {test,expect} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {decodePng,colorCount} from './png.mjs';
+import {waitForWorkspace} from './readiness.mjs';
 
 async function boot(page){
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('./?test=1',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>globalThis.imageSpaceDiagnostics?.ready,null,{timeout:120000});
-  await page.waitForFunction(()=>globalThis.imageSpaceControls?.some(c=>c.name==='Image canvas'&&c.width>100),null,{timeout:30000});
-  await page.waitForTimeout(600);return errors;
+  await waitForWorkspace(page);return errors;
 }
 async function state(page){return page.evaluate(()=>globalThis.imageSpaceDiagnostics);}
 async function control(page,name){await expect.poll(()=>page.evaluate(n=>globalThis.imageSpaceControls?.filter(c=>c.name===n&&c.enabled).length||0,name),{message:`Control '${name}' must be visible`}).toBeGreaterThan(0);return page.evaluate(n=>globalThis.imageSpaceControls.find(c=>c.name===n&&c.enabled),name);}
@@ -15,6 +14,8 @@ async function menu(page,name,item){await click(page,name);await click(page,item
 async function world(page,x,y){const c=await control(page,'Image canvas'),s=await state(page);return {x:c.x+s.panX+x*s.zoom,y:c.y+s.panY+y*s.zoom};}
 async function drag(page,a,b){await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:12});await page.mouse.up();await page.waitForTimeout(400);}
 async function screenshot(page,name){await mkdir('artifacts/screenshots',{recursive:true});return page.screenshot({path:`artifacts/screenshots/${name}.png`});}
+async function pixel(page,point){return decodePng(await page.screenshot()).pixel(point.x,point.y).slice(0,3);}
+const distance=(a,b)=>a.reduce((sum,value,index)=>sum+Math.abs(value-b[index]),0);
 
 test('real Uno workspace renders original artwork and custom controls',async({page})=>{
   const errors=await boot(page);expect((await state(page)).layers).toBe(8);expect(await page.locator('canvas').count()).toBeGreaterThan(0);
@@ -27,9 +28,13 @@ test('real Uno workspace renders original artwork and custom controls',async({pa
 
 test('paint and undo operate through real pointer and keyboard events',async({page})=>{
   await boot(page);await click(page,'New pixel layer');await expect.poll(async()=> (await state(page)).layers).toBe(9);await click(page,'Brush tool (B)');
-  const a=await world(page,560,460),b=await world(page,810,450);await page.mouse.move(12,10);const before=decodePng(await page.screenshot());const mid=await world(page,680,455);const old=before.pixel(mid.x,mid.y);
-  await drag(page,a,b);await page.mouse.move(12,10);await expect.poll(async()=> (await state(page)).history).toBe(2);const painted=decodePng(await screenshot(page,'painted'));const color=painted.pixel(mid.x,mid.y);expect(Math.abs(color[0]-old[0])+Math.abs(color[1]-old[1])+Math.abs(color[2]-old[2])).toBeGreaterThan(20);
-  await page.keyboard.press('Control+z');await expect.poll(async()=> (await state(page)).history).toBe(1);const undone=decodePng(await page.screenshot()).pixel(mid.x,mid.y);expect(undone.slice(0,3)).toEqual(old.slice(0,3));
+  const a=await world(page,560,460),b=await world(page,810,450);await page.mouse.move(12,10);const mid=await world(page,680,455);const old=await pixel(page,mid);
+  await drag(page,a,b);await page.mouse.move(12,10);await expect.poll(async()=> (await state(page)).history).toBe(2);
+  // Committed model state can precede presentation by a compositor frame on cold CDN starts.
+  // Keep a real pixel assertion and wait for presentation, rather than extending a fixed sleep.
+  await expect.poll(async()=>distance(await pixel(page,mid),old),{message:'The painted stroke must change visible pixels.'}).toBeGreaterThan(20);
+  const painted=decodePng(await screenshot(page,'painted'));expect(distance(painted.pixel(mid.x,mid.y).slice(0,3),old)).toBeGreaterThan(20);
+  await page.keyboard.press('Control+z');await expect.poll(async()=> (await state(page)).history).toBe(1);await expect.poll(()=>pixel(page,mid),{message:'Undo must restore the exact pre-stroke RGB pixels.'}).toEqual(old);
   await page.keyboard.press('Control+Shift+z');await expect.poll(async()=> (await state(page)).history).toBe(2);await click(page,'Add layer mask');await expect.poll(async()=> (await state(page)).mask).toBe(true);expect((await state(page)).editMask).toBe(true);
   await menu(page,'Image','Invert');await expect.poll(async()=> (await state(page)).history).toBe(4);await screenshot(page,'mask-inverted');
 });
