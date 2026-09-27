@@ -1,0 +1,45 @@
+name: Build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Engine, formats and compositor tests
+        run: dotnet run --project tests/ImageSpace.Tests -c Release
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-engine-validation
+          path: artifacts/engine-tests.json
+      - name: Install browser workload
+        if: hashFiles('src/ImageSpace.App/ImageSpace.App.csproj') != ''
+        run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Fetch open font assets
+        if: hashFiles('scripts/fetch-assets.py') != ''
+        run: python3 scripts/fetch-assets.py
+      - name: Build browser application
+        if: hashFiles('src/ImageSpace.App/ImageSpace.App.csproj') != ''
+        run: dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
+      - name: Collect static site
+        if: hashFiles('scripts/collect-site.py') != ''
+        run: python3 scripts/collect-site.py artifacts/publish site
+      - uses: actions/upload-artifact@v7
+        if: hashFiles('site/index.html') != ''
+        with:
+          name: ImageSpace-browser
+          path: site
+          include-hidden-files: true

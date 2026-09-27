@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>true</IsPackable><Description>Pressure-aware brush engine, selections, flood fill and raster transforms.</Description></PropertyGroup><ItemGroup><ProjectReference Include="../ImageSpace.Core/ImageSpace.Core.csproj" /></ItemGroup></Project>

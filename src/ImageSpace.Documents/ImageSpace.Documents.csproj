@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>true</IsPackable><Description>Versioned native document archives and bounded 8-bit RGB PSD interchange.</Description></PropertyGroup><ItemGroup><ProjectReference Include="../ImageSpace.Core/ImageSpace.Core.csproj" /></ItemGroup></Project>

@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>14</LangVersion>
+    <Version>0.1.0-alpha.1</Version><SkiaSharpVersion>3.119.2</SkiaSharpVersion>
+    <Authors>Wiesław Šoltés; ImageSpace contributors</Authors><Company>ImageSpace</Company>
+    <RepositoryUrl>https://github.com/wieslawsoltes/ImageSpace</RepositoryUrl><RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/wieslawsoltes/ImageSpace</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression><PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols><SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl><EmbedUntrackedSources>true</EmbedUntrackedSources><Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <UnoDisableHotDesign>true</UnoDisableHotDesign><UnoDisableMCPSupport>true</UnoDisableMCPSupport>
+  </PropertyGroup>
+  <ItemGroup><None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" /></ItemGroup>
+</Project>
