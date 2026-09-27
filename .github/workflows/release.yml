@@ -1,0 +1,107 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Validate and publish assets
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          dotnet workload install wasm-tools --skip-manifest-update
+          python3 scripts/fetch-assets.py
+          dotnet run --project tests/ImageSpace.Tests -c Release
+          dotnet run --project tests/ImageSpace.RegressionTests -c Release
+          dotnet build src/ImageSpace.Workbench -c Release -p:Version="$VERSION"
+          dotnet build src/ImageSpace.WebGpu -c Release -p:Version="$VERSION"
+          mkdir -p artifacts/packages
+          for project in src/ImageSpace.*/ImageSpace.*.csproj; do
+            case "$project" in */ImageSpace.App/*) continue ;; esac
+            dotnet pack "$project" -c Release --no-build -p:Version="$VERSION" -o artifacts/packages
+          done
+          dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:Version="$VERSION" -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
+          VERSION="$VERSION" python3 scripts/collect-site.py artifacts/publish site
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:browser
+          npm --prefix packages/webgpu version "$VERSION" --no-git-tag-version --allow-same-version
+          npm run pack:webgpu
+          git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
+          cd site && zip -qr ../artifacts/ImageSpace-browser.zip .
+      - name: Publish NuGet when explicitly configured
+        if: env.NUGET_API_KEY != ''
+        run: dotnet nuget push 'artifacts/packages/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
+      - name: Publish npm when explicitly configured
+        if: env.NODE_AUTH_TOKEN != ''
+        run: npm publish artifacts/packages/*.tgz --access public --provenance
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ImageSpace-release-assets
+          path: |
+            artifacts/packages
+            artifacts/ImageSpace-source.zip
+            artifacts/ImageSpace-browser.zip
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - shell: bash
+        run: python3 scripts/fetch-assets.py
+      - shell: bash
+        run: dotnet publish src/ImageSpace.App -c Release -f net10.0-desktop -r ${{ matrix.rid }} -p:ImageSpaceDesktopOnly=true -p:Version="${GITHUB_REF_NAME#v}" --self-contained true -o artifacts/native
+      - name: Archive native distribution
+        shell: bash
+        run: python3 -c "import shutil; shutil.make_archive('ImageSpace-${{ matrix.rid }}','zip','artifacts/native')"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ImageSpace-release-${{ matrix.rid }}
+          path: ImageSpace-${{ matrix.rid }}.zip
+  release:
+    needs: [packages,native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ImageSpace-release-*
+          path: release
+          merge-multiple: true
+      - name: Publish GitHub prerelease or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" --repo '${{ github.repository }}' --verify-tag --generate-notes "${flags[@]}"
+          find release -type f -print0 | xargs -0 -r gh release upload "$GITHUB_REF_NAME" --repo '${{ github.repository }}' --clobber

@@ -12,34 +12,75 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
       - name: Engine, formats and compositor tests
-        run: dotnet run --project tests/ImageSpace.Tests -c Release
+        run: |
+          dotnet run --project tests/ImageSpace.Tests -c Release
+          dotnet run --project tests/ImageSpace.RegressionTests -c Release
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ImageSpace-engine-validation
-          path: artifacts/engine-tests.json
+          path: artifacts/*tests.json
       - name: Install browser workload
-        if: hashFiles('src/ImageSpace.App/ImageSpace.App.csproj') != ''
         run: dotnet workload install wasm-tools --skip-manifest-update
       - name: Fetch open font assets
-        if: hashFiles('scripts/fetch-assets.py') != ''
         run: python3 scripts/fetch-assets.py
-      - name: Build browser application
-        if: hashFiles('src/ImageSpace.App/ImageSpace.App.csproj') != ''
+      - name: Publish real Uno browser application
         run: dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
-      - name: Collect static site
-        if: hashFiles('scripts/collect-site.py') != ''
+      - name: Collect and identify static site
         run: python3 scripts/collect-site.py artifacts/publish site
+      - name: Install browser test tools
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Pointer, keyboard, file and GPU browser acceptance
+        run: |
+          npm run test:browser
+          mkdir -p site/screenshots
+          cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
+      - name: Build reusable libraries for desktop and browser
+        run: dotnet build src/ImageSpace.Workbench -c Release
+      - name: Pack NuGet and WebGPU libraries
+        run: |
+          mkdir -p artifacts/packages
+          for project in src/ImageSpace.*/ImageSpace.*.csproj; do
+            case "$project" in */ImageSpace.App/*) continue ;; esac
+            dotnet pack "$project" -c Release --no-build --no-restore -o artifacts/packages
+          done
+          npm run pack:webgpu
+      - name: Prepare source archive
+        run: git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
       - uses: actions/upload-artifact@v7
-        if: hashFiles('site/index.html') != ''
+        if: always()
+        with:
+          name: ImageSpace-browser-validation
+          path: |
+            artifacts/browser-results.json
+            artifacts/webgpu-results.json
+            artifacts/browser-tests
+            artifacts/screenshots
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        if: always() && hashFiles('site/index.html') != ''
         with:
           name: ImageSpace-browser
           path: site
           include-hidden-files: true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ImageSpace-libraries
+          path: artifacts/packages
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ImageSpace-source
+          path: artifacts/ImageSpace-source.zip

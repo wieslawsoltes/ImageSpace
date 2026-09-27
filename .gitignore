@@ -6,6 +6,9 @@ node_modules/
 artifacts/
 site/
 TestResults/
+playwright-report/
 *.user
 src/ImageSpace.App/Assets/Fonts/*.ttf
 src/ImageSpace.App/Assets/Fonts/OFL.txt
+packages/webgpu/dist/
+packages/webgpu/LICENSE

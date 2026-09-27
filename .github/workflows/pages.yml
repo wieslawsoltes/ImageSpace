@@ -1,0 +1,92 @@
+name: GitHub Pages
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Resolve successful main build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/build.yml/runs?branch=main&status=success&per_page=10" --jq '[.workflow_runs[] | select(.event != "pull_request")][0].id')
+          fi
+          test -n "$RUN_ID" && test "$RUN_ID" != null
+          gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID" > run.json
+          test "$(jq -r .conclusion run.json)" = success
+          test "$(jq -r .head_branch run.json)" = main
+          test "$(jq -r .path run.json)" = .github/workflows/build.yml
+          echo "run=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r .head_sha run.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.build.outputs.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ImageSpace-browser
+          path: site
+          run-id: ${{ steps.build.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Verify artifact identity
+        run: |
+          test "$(jq -r .commit site/build-info.json)" = "${{ steps.build.outputs.sha }}"
+          test "$(jq -r .host site/build-info.json)" = "Uno WebAssembly"
+          test -n "$(find site -name '*.wasm' -print -quit)"
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          include-hidden-files: true
+      - uses: actions/deploy-pages@v4
+        id: deployment
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify the deployed commit
+        env:
+          URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent "$URL/build-info.json?v=${{ steps.build.outputs.sha }}" > deployed.json && test "$(jq -r .commit deployed.json)" = "${{ steps.build.outputs.sha }}"; then exit 0; fi
+            sleep 5
+          done
+          echo 'GitHub Pages is not serving the expected commit'; exit 1
+      - name: Verify editing against the public URL
+        env:
+          IMAGESPACE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:browser
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-public-site-validation
+          path: |
+            artifacts/browser-results.json
+            artifacts/webgpu-results.json
+            artifacts/browser-tests
+            artifacts/screenshots

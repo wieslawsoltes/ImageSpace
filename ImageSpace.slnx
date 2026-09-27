@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Libraries/">
+    <Project Path="src/ImageSpace.Core/ImageSpace.Core.csproj" />
+    <Project Path="src/ImageSpace.Imaging/ImageSpace.Imaging.csproj" />
+    <Project Path="src/ImageSpace.Filters/ImageSpace.Filters.csproj" />
+    <Project Path="src/ImageSpace.Editing/ImageSpace.Editing.csproj" />
+    <Project Path="src/ImageSpace.Documents/ImageSpace.Documents.csproj" />
+    <Project Path="src/ImageSpace.Skia/ImageSpace.Skia.csproj" />
+    <Project Path="src/ImageSpace.WebGpu/ImageSpace.WebGpu.csproj" />
+    <Project Path="src/ImageSpace.Storage/ImageSpace.Storage.csproj" />
+    <Project Path="src/ImageSpace.Controls/ImageSpace.Controls.csproj" />
+    <Project Path="src/ImageSpace.Editor/ImageSpace.Editor.csproj" />
+    <Project Path="src/ImageSpace.Workbench/ImageSpace.Workbench.csproj" />
+  </Folder>
+  <Folder Name="/Applications/"><Project Path="src/ImageSpace.App/ImageSpace.App.csproj" /></Folder>
+  <Folder Name="/Tests/"><Project Path="tests/ImageSpace.Tests/ImageSpace.Tests.csproj" /><Project Path="tests/ImageSpace.RegressionTests/ImageSpace.RegressionTests.csproj" /></Folder>
+</Solution>

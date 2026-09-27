@@ -1,0 +1,60 @@
+name: Format source
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/format.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: source-format
+  cancel-in-progress: false
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Apply initial Uno compatibility corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          corrections={
+            'src/ImageSpace.Workbench/StudioWorkbench.Commands.cs':[('_workspace.IsEnabled','_workspace.IsHitTestVisible'),('Surface.Zoom/.8f*.64f','Surface.Zoom*.8f'),('Hue / Saturation (saturation)…','Saturation…')],
+            'src/ImageSpace.Workbench/StudioWorkbench.Dialogs.cs':[('RequestedTheme=ApplicationTheme.Dark','RequestedTheme=ElementTheme.Dark'),('15 CPU filters','14 CPU filters')],
+            'src/ImageSpace.Workbench/StudioWorkbench.Layout.cs':[('Windows.UI.Text.FontWeights.SemiBold','Microsoft.UI.Text.FontWeights.SemiBold')],
+            'src/ImageSpace.Workbench/LayerPanel.cs':[('Grid.SetRow(actions,2);grid.Children.Add(Studio.Box(actions));','var actionsHost=Studio.Box(actions);Grid.SetRow(actionsHost,2);grid.Children.Add(actionsHost);')],
+            'src/ImageSpace.Workbench/StudioWorkbench.Keyboard.cs':[('if(_dialogOpen||_busy)return;','if(_dialogOpen||_busy||XamlRoot is null)return;')],
+            'src/ImageSpace.Editor/ImageViewport.cs':[('public Rgba32 Foreground','public new Rgba32 Foreground'),('public void Dispose()','public new void Dispose()')],
+            'src/ImageSpace.Editor/ImageViewport.Rendering.cs':[('for(var y=rect.Top;y<rect.Bottom;y+=12)for(var x=rect.Left;x<rect.Right;x+=12)if(((int)((x-rect.Left)/12)+(int)((y-rect.Top)/12))%2==0)c.DrawRect(x,y,12,12,paint);','DrawCheckerboard(c,rect,area,paint);')],
+            'src/ImageSpace.Workbench/StudioWorkbench.cs':[('public void Dispose()','public new void Dispose()')],
+            'src/ImageSpace.WebGpu/ImageSpace.WebGpu.csproj':[('<None Include="WebGpu.js"','<None Update="WebGpu.js"')],
+            'tests/browser/editor.spec.mjs':[('?.ready,{timeout:120000}','?.ready,null,{timeout:120000}'),("c.width>100),{timeout:30000}","c.width>100),null,{timeout:30000}"),('/unavailable|No WebGPU|failed/i','/WebGPU unavailable|No WebGPU adapter/i')],
+            'README.md':[('Fifteen CPU kernels','Fourteen CPU kernels'),('fifteen CPU kernels','fourteen CPU kernels'),('15 CPU filters','14 CPU filters')]
+          }
+          for name,pairs in corrections.items():
+            path=Path(name);text=path.read_text()
+            for old,new in pairs: text=text.replace(old,new)
+            path.write_text(text)
+          PY
+      - name: Format C# source
+        run: dotnet format whitespace . --folder --verbosity minimal
+      - name: Commit formatting and dispatch validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src tests README.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'Fix Uno API compatibility, validate live tiles and format C# source'
+            git push origin HEAD:main
+          fi
+          gh api -X POST 'repos/${{ github.repository }}/actions/workflows/build.yml/dispatches' -f ref=main
+          gh api -X POST 'repos/${{ github.repository }}/actions/workflows/desktop.yml/dispatches' -f ref=main
