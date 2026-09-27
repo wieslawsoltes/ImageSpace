@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>14</LangVersion>
     <Version>0.1.0-alpha.1</Version>
-    <SkiaSharpVersion>3.119.2</SkiaSharpVersion>
+    <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
     <Authors>Wiesław Šoltés; ImageSpace contributors</Authors>
     <Company>ImageSpace</Company>
     <RepositoryUrl>https://github.com/wieslawsoltes/ImageSpace</RepositoryUrl>
