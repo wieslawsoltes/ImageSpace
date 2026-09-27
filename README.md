@@ -9,68 +9,70 @@
 [![Pages](https://github.com/wieslawsoltes/ImageSpace/actions/workflows/pages.yml/badge.svg)](https://github.com/wieslawsoltes/ImageSpace/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Open ImageSpace**](https://wieslawsoltes.github.io/ImageSpace/) · [User guide](docs/user-guide.md) · [Architecture](docs/architecture.md) · [Feature matrix](docs/features.md) · [Build and release](docs/development.md)
+[**Open ImageSpace**](https://wieslawsoltes.github.io/ImageSpace/) · [User guide](docs/user-guide.md) · [Curves & Levels](docs/tonal-adjustments.md) · [Architecture](docs/architecture.md) · [Feature matrix](docs/features.md) · [Development](docs/development.md)
 
 </div>
 
 ---
 
-ImageSpace is an independent layered image editor built with **Uno Platform**, **SkiaSharp**, and an optional **WebGPU compute backend**. It brings a familiar professional photo-editing workspace to a genuine Uno WebAssembly application and shared Windows, Linux, and macOS hosts.
+ImageSpace is an independent layered image editor built with **Uno Platform**, **SkiaSharp**, and an optional **WebGPU compute backend**. Its professional photo-editing workspace runs as a genuine Uno WebAssembly application and shares its C# editor with Windows, Linux and macOS hosts.
 
-The project is organized as **eleven reusable, packable .NET libraries** rather than one application-sized rendering control. Pixels, selections, brushes, filters, document transactions, file formats, rendering, custom controls, the viewport, storage contracts, and the workbench can be used independently.
+Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a single monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **Status: 0.1.0-alpha.1 — functional initial release, not full Photoshop parity.** The interface follows Photoshop workspace conventions but is not pixel-identical. PSD support is a deliberately bounded raster interchange implementation, not a lossless Photoshop editor. [Read the exact supported boundary](docs/features.md) before editing important files.
+> **0.1.0-alpha.1 — functional initial development release, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
-## The workspace
+![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
-A compact menu and tool-options bar, a vertical custom-drawn toolbox, tabbed documents, rulers, on-canvas transform handles, a color spectrum, numeric properties, layers, channels/histograms, and history. The included **After the light** artwork is generated locally and remains editable as separate pixel, shape, and type layers. No Adobe artwork, icons, fonts, or network image assets are used.
-
-![ImageSpace workspace, captured from the real Uno browser application](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
-
-## What works
+## Editing capabilities
 
 | Area | Implemented behavior |
 | --- | --- |
-| Painting | Pressure-aware round brush, pencil, eraser, clone stamp, basic smudge, dodge and burn; size, hardness, opacity, flow and spacing kernels |
+| Paint | Pressure-aware brush, pencil, eraser, clone, basic smudge/dodge/burn; size, hardness, opacity and flow |
 | Selection | Rectangle, ellipse, lasso, contiguous color, add/subtract/intersect, invert, feather and alpha selection |
-| Layers | Sparse RGBA pixel layers, editable multiline type, rectangle/ellipse shapes, visibility, locks, opacity, sixteen blend modes, masks, duplicate/reorder, rasterize and merge |
-| Geometry | Move, eight resize handles, rotation, constrained transforms, numeric properties, non-destructive crop, canvas/image sizing and rotation |
-| Filters | Fourteen CPU kernels; eight browser WebGPU color kernels; six non-destructive adjustment types composed through Skia |
-| Documents | Multiple tabs, tile-sharing undo/redo, native `.imagespace` ZIP archives, bounded RGB/8 PSD interchange, image import and PNG/JPEG/WebP export |
-| Recovery | IndexedDB in the browser and atomic recovery-file replacement on desktop; visible failures instead of silent data loss |
-| Validation | Headless engine and raster regressions, real pointer/keyboard browser tests, rendered-pixel assertions, file roundtrips and explicit GPU/fallback diagnostics |
+| Layers | Sparse pixels, editable multiline type, rectangle/ellipse shapes, masks, sixteen blend modes, opacity, visibility, locks, duplicate/reorder and rasterization |
+| Geometry | Eight-handle scaling, rotation, constrained motion, numeric properties, non-destructive crop and canvas/image sizing |
+| Tone | **Curves and Levels**, composite RGB and separate color channels, draggable graphs, numeric/keyboard editing, presets and live undoable previews |
+| Effects | Fourteen CPU filters, eight optional WebGPU color kernels and eight live Skia adjustment types |
+| Files | Editable native archives, bounded RGB/8 PSD, raster import, PNG/JPEG/WebP export, multiple document tabs |
+| Recovery | Local IndexedDB or atomic desktop recovery file; visible error reporting |
 
-The application contains its own user guide and compatibility reference under **Help**. Every advertised menu command has an implementation or an explicit supported-format constraint; unsupported Photoshop features are not represented as working AI or cloud services.
+The **After the light** sample is original procedural artwork with separate pixel, type and shape layers. No Adobe artwork, icons, fonts or remote stock images are included. The Help menu contains the user guide, compatibility boundary and rendering diagnostics.
 
-## Rendering, without proprietary dependencies
+## Non-destructive Curves and Levels
 
-The shared compositor draws revision-cached image tiles, text, vector shapes, blend layers and masks into Uno's `SKCanvasElement`. Uno selects the host graphics backend. Skia supplies GPU-capable rendering and live color/image filters, while software rendering remains a supported host fallback.
+Create an adjustment from **Image** or **Adjustments**. It is inserted above the selected layer. Dragging updates the actual image before pointer release; the complete gesture produces one history state. Escape cancels without retaining the preview. Numeric inputs, keyboard nudging, channel switching and presets work with the same immutable settings and transaction model.
 
-The browser additionally ships an independently reusable WebGPU module for invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold and posterize. Unsupported kernels or unavailable adapters return to the CPU implementation. GPU output is read back into the same editable tile model, preserving deterministic undo and native saves. This is **not a GPU-only engine**, and a CI software adapter is not a physical-GPU performance benchmark.
+Curves uses independently implemented shape-preserving cubic interpolation with 2–16 points per channel. Levels exposes input black/white, gamma and output endpoints. Alpha is preserved, source pixels are untouched, and cached Skia lookup filters avoid rebuilding unchanged state. Inspector histograms are explicitly sampled. Read the [algorithm, reuse API and file compatibility](docs/tonal-adjustments.md).
 
-The build pins **.NET SDK 10.0.401**, **Uno SDK 6.7.30**, and the **SkiaSharp 3.119.2 managed/native ABI**. Skia is intentionally kept on the version compatible with this Uno renderer rather than independently upgraded to a mismatched native ABI. See [dependency and backend policy](docs/architecture.md#dependency-policy).
+## Rendering and dependencies
+
+The shared compositor draws revision-cached tiles, text, shapes, blends, masks and live adjustments into Uno's `SKCanvasElement`. The host selects its available Skia graphics backend; software rendering remains possible. Curves/Levels use shared Skia lookup filters, rather than a WebGPU roundtrip for every pointer movement.
+
+An independently reusable browser WebGPU module accelerates invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold and posterize. Output returns to the authoritative tile model for undo and native saving. Unsupported kernels/adapters use the CPU path. This is **not a GPU-only engine**, and software-adapter CI does not establish physical-GPU performance.
+
+The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** and **SkiaSharp 3.119.2**. Managed/native Skia ABI compatibility is intentional; independently changing only one side is not a supported upgrade.
 
 ## Reusable libraries
 
-| Package | Responsibility | Uno dependency |
-| --- | --- | --- |
-| `ImageSpace.Core` | Colors, sparse copy-on-write tiles, layers and document invariants | No |
-| `ImageSpace.Imaging` | Brush engine, selections, raster geometry, histogram and procedural sample | No |
-| `ImageSpace.Filters` | Deterministic color and convolution kernels | No |
-| `ImageSpace.Editing` | Transactions, bounded history and document commands | No |
-| `ImageSpace.Documents` | Native archives and bounded PSD codec | No |
-| `ImageSpace.Skia` | Skia compositor, tile upload cache and image codecs | No |
-| `ImageSpace.WebGpu` | Compute contracts and standalone browser shader module | No |
-| `ImageSpace.Storage` | Host-independent file and recovery contracts | No |
-| `ImageSpace.Controls` | Custom vector icons, buttons, menus, numeric fields, spectrum and histogram | Yes |
-| `ImageSpace.Editor` | Embeddable image viewport and pointer interaction | Yes |
-| `ImageSpace.Workbench` | Editor shell, panels, commands and multi-document workflows | Yes |
+| Package | Responsibility |
+| --- | --- |
+| `ImageSpace.Core` | Colors, tiles, layers, document invariants, immutable tone curves/levels and lookup math |
+| `ImageSpace.Imaging` | Brushes, selections, raster geometry, histograms and original sample |
+| `ImageSpace.Filters` | Color/convolution filters and sparse tone-lookup processing |
+| `ImageSpace.Editing` | Transactions, history, rollback and editor commands |
+| `ImageSpace.Documents` | Versioned native archives and bounded PSD codec |
+| `ImageSpace.Skia` | Compositor, revision caches, live adjustments and image codecs |
+| `ImageSpace.WebGpu` | Compute contracts and standalone JavaScript/WGSL kernels |
+| `ImageSpace.Storage` | Host-independent file/recovery contracts |
+| `ImageSpace.Controls` | Custom icons, buttons, menus, numeric fields, spectrum, histograms, curve and levels editors |
+| `ImageSpace.Editor` | Embeddable viewport, camera and pointer gestures |
+| `ImageSpace.Workbench` | Workspace, panels, tonal inspector, commands and multi-document workflows |
 
-NuGet packages are produced as CI artifacts. Public NuGet/npm publication requires the corresponding release credentials; a successful build does not mean packages have already been published to a registry. The standalone WebGPU library is also packed as `@wieslawsoltes/imagespace-webgpu`.
+The first eight packages have no Uno dependency. Controls, Editor and Workbench target both browser and desktop. CI produces all eleven NuGet packages plus the standalone `@wieslawsoltes/imagespace-webgpu` tarball. **Registry publication is separate** and requires release credentials; package artifacts do not imply NuGet.org/npm publication.
 
-### Embed the editor
+### Embed the viewport
 
-Reference `ImageSpace.Editor` from source, or install its CI-produced package from a local NuGet feed:
+Reference the source project or a CI-produced package in a local NuGet feed:
 
 ```csharp
 using ImageSpace.Core;
@@ -79,7 +81,6 @@ using ImageSpace.Editor;
 
 var session = new EditorSession(new ImageDocument(1600, 1000, "Untitled"));
 session.AddLayer("Paint");
-
 window.Content = new ImageViewport(session)
 {
     Tool = EditorTool.Brush,
@@ -87,29 +88,27 @@ window.Content = new ImageViewport(session)
 };
 ```
 
-The full shell is `new StudioWorkbench(session, storage)`, where `storage` implements `IEditorStorage`. No global service locator or application singleton is required by the engine.
+Embed the complete workspace with `new StudioWorkbench(session, storage)`, where `storage` implements `IEditorStorage`. Pure tone math and controls can be reused separately; see the [Curves/Levels examples](docs/tonal-adjustments.md#reuse-from-c).
 
-## Build and run
+## Build and validate
 
-Install .NET 10 and the browser workload, then fetch the OFL-licensed font assets:
+Install the pinned .NET SDK, Python 3 and Node 22:
 
 ```sh
 dotnet workload install wasm-tools --skip-manifest-update
 python3 scripts/fetch-assets.py
 
-# Desktop host on the current operating system.
+# Native desktop host.
 dotnet run --project src/ImageSpace.App -f net10.0-desktop -p:ImageSpaceDesktopOnly=true
 
-# Release browser build, with the same prefix used by GitHub Pages.
+# Genuine Uno browser application, with the GitHub Pages project prefix.
 dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm \
   -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
 python3 scripts/collect-site.py artifacts/publish site
 python3 scripts/serve-site.py --root site --port 4173
 ```
 
-Open `http://127.0.0.1:4173/ImageSpace/`. Use HTTPS for remote browser hosting; localhost is a secure-context exception for WebGPU. Native graphics libraries and display-server requirements are documented in [development.md](docs/development.md).
-
-### Run validation
+Open `http://127.0.0.1:4173/ImageSpace/`. Use HTTPS for remote hosting. Initial restore/font acquisition needs network access; documents are not uploaded by the application.
 
 ```sh
 dotnet run --project tests/ImageSpace.Tests -c Release
@@ -119,16 +118,20 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Browser tests require a collected `site/` build. They drive real Uno controls through coordinates obtained from an **opt-in, read-only** diagnostics surface; they do not mutate the document through JavaScript test hooks. The Pages workflow repeats the acceptance suite against the public URL and verifies the deployed source SHA.
+Browser tests require the collected `site/` tree. They use real pointer, keyboard, file-chooser and download events, with opt-in read-only control geometry—not JavaScript mutation hooks. Pixel assertions test visible painting, undo and live tone previews. Generated browser scripts are syntax-checked before publication. The Pages workflow verifies source identity and reruns acceptance on the deployed URL.
 
-## File safety and compatibility
+Build, desktop, Pages, tag-release and formatting workflows are under `.github/workflows`. Native distributions are unsigned developer builds; production signing/notarization is not implied. See [development](docs/development.md).
 
-Use **`.imagespace` for editable roundtrips**. Keep original imported files. PSD import is limited to PSD v1, RGB, eight bits per channel, with raw or PackBits pixel data. Unsupported color modes, large-document PSB, ZIP prediction and malformed bounds are rejected. Unsupported Photoshop metadata is not preserved. PSD exports rasterize type, shape transforms and masks; documents with live adjustment layers export a flattened compatibility image.
+## Files and limits
 
-Working limits are 8192 pixels per dimension, 16 megapixels per surface, 128 layers per document and 12 open documents. These are safety limits, not guarantees that every combination fits the memory budget of a browser tab. Recovery is local to one browser/device and is not a backup service.
+**Use `.imagespace` for editable roundtrips and retain original imports.** Native manifest version 2 retains Curves/Levels; the reader remains compatible with version 1. An older version-1-only application must reject the newer tone document instead of silently changing its appearance.
 
-## License and attribution
+PSD import supports version-1 RGB/8 raw or PackBits raster data, not smart objects, text metadata, groups, profiles, masks or Photoshop adjustments. PSD exports rasterize type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
 
-ImageSpace source is **MIT licensed**. Uno Platform is Apache-2.0, SkiaSharp is MIT, Skia is BSD-3-Clause, and Inter is distributed under the SIL Open Font License. Dependency notices and source references are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Working limits: 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. These are safety limits, not guarantees that all combinations fit a browser tab. Local recovery covers the active document and is not a cloud backup.
 
-ImageSpace is not affiliated with, endorsed by, or a product of Adobe. Adobe Photoshop is a trademark of Adobe. No Adobe source code, SDK, brand iconography, sample files or cloud endpoints are included.
+## License
+
+ImageSpace source and original artwork are **MIT licensed**. Uno Platform is Apache-2.0; SkiaSharp is MIT; Skia is BSD-3-Clause; Inter is SIL Open Font License. See [third-party notices](THIRD-PARTY-NOTICES.md).
+
+ImageSpace is independent and not affiliated with Adobe. Adobe Photoshop is an Adobe trademark. No Adobe source, private SDK, brand assets, sample files or cloud services are included.

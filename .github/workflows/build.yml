@@ -37,23 +37,23 @@ jobs:
         run: python3 scripts/fetch-assets.py
       - name: Publish real Uno browser application
         run: dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
-      - name: Collect and identify static site
+      - name: Collect and validate static site
         run: python3 scripts/collect-site.py artifacts/publish site
       - name: Install browser test tools
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Pointer, keyboard, file and GPU browser acceptance
+      - name: Pointer, keyboard, tonal, file and GPU browser acceptance
         run: |
           npm run test:browser
           mkdir -p site/screenshots
           cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
           cp artifacts/screenshots/compact-workspace.png site/screenshots/compact-workspace.png
+          cp artifacts/screenshots/curves-adjustment.png site/screenshots/curves-adjustment.png
+          cp artifacts/screenshots/levels-adjustment.png site/screenshots/levels-adjustment.png
       - name: Pack all reusable NuGet and WebGPU libraries
         run: |
           mkdir -p artifacts/packages
-          # Build each package in its own target context. A transitive Uno build
-          # may place engine XML documentation in a framework-specific path.
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
             case "$project" in */ImageSpace.App/*) continue ;; esac
             dotnet pack "$project" -c Release -o artifacts/packages

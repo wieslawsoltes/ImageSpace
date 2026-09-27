@@ -42,9 +42,7 @@ public sealed class ToneAdjustmentEditor : UserControl
         _preview = preview;
         _kind = Current?.Adjustment ?? throw new ArgumentException("The adjustment layer does not exist.", nameof(layerId));
         if (_kind is not (AdjustmentKind.Curves or AdjustmentKind.Levels))
-        {
             throw new ArgumentException("A Curves or Levels layer is required.", nameof(layerId));
-        }
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         Content = _body;
         var channels = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -68,7 +66,7 @@ public sealed class ToneAdjustmentEditor : UserControl
             _curve.TryBeginEdit = BeginEdit;
             _curve.CurveChanged += value =>
             {
-                if (_ownsTransaction && Current is { } layer)
+                if (_ownsTransaction && _session.IsInTransaction && Current is { } layer)
                 {
                     layer.Curves = layer.Curves.WithChannel(_channel, value);
                     _preview();
@@ -89,7 +87,7 @@ public sealed class ToneAdjustmentEditor : UserControl
             _levels.TryBeginEdit = BeginEdit;
             _levels.ValueChanged += value =>
             {
-                if (_ownsTransaction && Current is { } layer)
+                if (_ownsTransaction && _session.IsInTransaction && Current is { } layer)
                 {
                     layer.Levels = layer.Levels.WithChannel(_channel, value);
                     RefreshNumbers();
@@ -105,15 +103,10 @@ public sealed class ToneAdjustmentEditor : UserControl
             _outWhite.ValueChanged += value => ChangeLevels(levels => levels with { OutputWhite = value });
         }
         StudioButton? presets = null;
-        presets = new StudioButton(_kind + " presets", () => ShowPresets(presets!))
-        {
-            Width = 123, Content = Studio.Label("Presets  ⌄", 11)
-        };
-        _body.Children.Add(Studio.Row(presets, new StudioButton("Reset tone channel", ResetChannel)
-        {
-            Width = 123, Content = Studio.Label("Reset channel", 11)
-        }));
-        _body.Children.Add(Studio.Row(_kind == AdjustmentKind.Curves ? _delete : new StudioButton("Reset all levels", () => Edit("Reset Levels", layer => layer.Levels = new())) { Width = 123 }, _previewButton));
+        presets = new StudioButton(_kind + " presets", () => ShowPresets(presets!)) { Width = 123, Content = Studio.Label("Presets  ⌄", 11) };
+        _body.Children.Add(Studio.Row(presets, new StudioButton("Reset tone channel", ResetChannel) { Width = 123, Content = Studio.Label("Reset channel", 11) }));
+        _body.Children.Add(Studio.Row(_kind == AdjustmentKind.Curves ? _delete :
+            new StudioButton("Reset all levels", () => Edit("Reset Levels", layer => layer.Levels = new())) { Width = 123 }, _previewButton));
         _body.Children.Add(Studio.Label("Sampled input histogram · non-destructive", 10, "#989898"));
         Unloaded += (_, _) => { _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit(); };
         RefreshFromDocument();
@@ -128,6 +121,14 @@ public sealed class ToneAdjustmentEditor : UserControl
 
     public void RefreshFromDocument()
     {
+        // Global Undo/Save/document switching can cancel the session before the pointer is released.
+        // Release the stale gesture as well; it must never mutate the restored document outside a transaction.
+        if (_ownsTransaction && !_session.IsInTransaction)
+        {
+            _ownsTransaction = false;
+            _curve.CancelEdit();
+            _levels.CancelEdit();
+        }
         if (_ownsTransaction || Current is not { } layer) return;
         _refreshing = true;
         try
@@ -149,10 +150,7 @@ public sealed class ToneAdjustmentEditor : UserControl
             {
                 var document = _session.Document;
                 var index = document.Layers.IndexOf(layer);
-                var prefix = new ImageDocument(document.Width, document.Height)
-                {
-                    Layers = document.Layers.Take(index).ToList()
-                };
+                var prefix = new ImageDocument(document.Width, document.Height) { Layers = document.Layers.Take(index).ToList() };
                 var pixels = _renderer.RasterizePreview(prefix, 192);
                 var channel = _channel switch { ToneChannel.Red => 0, ToneChannel.Green => 1, ToneChannel.Blue => 2, _ => -1 };
                 var histogram = RasterOperations.Histogram(pixels, channel);

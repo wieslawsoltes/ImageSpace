@@ -1,54 +1,56 @@
 # Feature and compatibility matrix
 
-This file is the release boundary, not a checklist that labels placeholders as complete.
+This is the implemented boundary, not a list of placeholders presented as complete Photoshop parity.
 
-| Feature | Status | Important qualification |
-| --- | --- | --- |
-| Genuine Uno browser application | Implemented | WebAssembly; not a separate HTML mockup |
-| Windows/Linux/macOS host projects | Implemented | Build artifacts are unsigned developer builds |
-| Photoshop-style shell | Implemented | Familiar layout, not pixel-identical Photoshop |
-| Custom icons, menus and key editor controls | Implemented | Uses Uno layout, text-input and focus primitives |
-| Multi-document tabs | Implemented | Maximum twelve; recovery covers the active tab |
-| Sparse RGBA tiles and copy-on-write snapshots | Implemented | 128 px tiles; 8-bit straight alpha |
-| Transactional undo/redo and save markers | Implemented | 64-entry/192 MiB target history; not persisted |
-| Brush/pencil/eraser | Implemented | Round tips; no imported ABR or textured/dynamic tip engine |
-| Pen pressure | Implemented | Pressure-to-radius/opacity; no tilt or barrel-rotation engine |
-| Clone stamp | Implemented | Alt-click source, active raster layer, snapshot source |
-| Dodge/burn/smudge | Basic | Simple kernels, not Photoshop's advanced tonal/healing models |
-| Fill and linear gradient | Implemented | Foreground/background, active pixel layer |
-| Rectangle/ellipse/lasso/wand | Implemented | Add/subtract/intersect; wand uses contiguous color |
-| Feather/invert/alpha selections | Implemented | No select-subject, hair refinement or edge-decontamination |
-| Layer masks | Implemented | Pixel, text and shape masks; not full adjustment/group-mask semantics |
-| Layer opacity/visibility/locks/reorder | Implemented | Individual layers; no layer groups or clipping chains |
-| Blend modes | Implemented | Sixteen Skia-supported modes; no Blend If controls |
-| Text | Basic editable | Inter, multiline, size, weight and color; no complete font/paragraph shaping UI |
-| Shape layers | Basic editable | Rectangles, rounded rectangles, ellipses, fill and stroke |
-| Move/resize/rotation | Implemented | Eight handles, angle handle, constrained operations, numeric input |
-| Canvas crop and resize | Implemented | Non-destructive offsets preserve off-canvas pixels |
-| Image sizing/rotation | Implemented | Non-destructive layer scaling; no Photoshop resampling presets |
-| CPU filters | Implemented | Invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold, posterize, blur, sharpen, emboss, edges, pixelate, noise |
-| WebGPU color filters | Implemented | Eight kernels; adapter-dependent, CPU fallback; readback required |
-| Live adjustment layers | Implemented subset | Brightness/contrast, saturation, invert, grayscale, sepia, blur |
-| Native `.imagespace` archive | Implemented | Versioned UTF-8 manifest, RGBA layers/masks, metadata validation |
-| PSD | Raster subset | v1, RGB/8, raw/PackBits, layer positions/opacity/visibility/blend |
-| PSB / high-bit PSD / CMYK PSD | Rejected | Not silently interpreted as an editable equivalent |
-| PNG/JPEG/WebP | Implemented | Raster import/export; JPEG exports against white |
-| BMP/GIF import | Codec-dependent | Static raster decode; no animated document/timeline |
-| Clipboard | Application-local | Pixel clipboard, not complete OS/browser rich-image interoperability |
-| Recovery | Implemented | IndexedDB or native file; not a cloud backup |
-| Histogram/channels panel | Implemented subset | RGB component histograms and composite-alpha selection, not editable spot channels |
-| Physical GPU performance validation | Not yet established | CI is not a substitute for a device matrix |
+| Area | Status and boundary |
+| --- | --- |
+| Genuine Uno WebAssembly application | Implemented; shares the editor with desktop hosts, not a separate HTML mockup |
+| Windows/Linux/macOS | Host projects and self-contained CI artifacts; unsigned developer builds |
+| Photoshop-style workspace | Custom dark chrome, toolbox, tabs, menus, properties, layers and history; not pixel-identical Photoshop |
+| Reusable controls | Original icons, buttons, menus, numeric fields, spectrum, histogram, Curves and Levels; Uno primitives handle layout, focus and text input |
+| Documents | Up to twelve tabs; local recovery covers the active tab |
+| Pixel model | Sparse 128-pixel RGBA8 tiles with copy-on-write snapshots |
+| Undo/redo | Transactional; 64-entry/192 MiB target history, not a hard process-memory limit; history is not saved in archives |
+| Brush/pencil/eraser | Pressure-aware round tips; no ABR imports or textured/dynamic-tip engine |
+| Clone | Alt-click source, active raster layer, stroke-start source snapshot |
+| Dodge/burn/smudge | Basic kernels; not healing/content-aware or advanced Photoshop tonal tools |
+| Fill/gradient | Foreground/background, active pixel layer, linear gradient |
+| Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather and alpha selection |
+| Masks | Pixel/text/shape coverage masks; adjustment/group masks remain unsupported |
+| Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; no groups or clipping chains |
+| Type | Editable multiline Inter text, size, weight and color; no complete typography/font-discovery UI |
+| Shapes | Rectangle, rounded rectangle and ellipse, fill and stroke; no pen/path editor |
+| Transforms | Move, eight resize handles, rotation handle, numeric inputs and constrained gestures |
+| Canvas/image sizing | Non-destructive crop/offsets/scaling; no Photoshop resampling preset suite |
+| CPU filters | Fourteen color/convolution kernels plus reusable Curves/Levels tone-lookup processing |
+| WebGPU filters | Eight destructive color kernels, adapter-dependent, explicit CPU fallback and readback |
+| Live adjustments | Brightness/contrast, saturation, invert, grayscale, sepia, blur, **Curves and Levels** |
+| Curves | Four channels, up to sixteen points per channel, shape-preserving cubic interpolation, numeric/keyboard edits, presets and live transactional dragging |
+| Levels | Four channels, input/output endpoints, gamma, draggable histogram handles, numeric edits and presets |
+| Native archive | Version 1 and 2 reader; version 2 preserves Curves/Levels; UTF-8 manifest, pixel/mask data and input limits |
+| PSD | Bounded PSD v1 RGB/8 raw/PackBits raster layers, offsets, visibility, opacity and blend keys; not lossless Photoshop roundtripping |
+| PSB/high-bit/CMYK PSD | Rejected rather than silently interpreted as equivalent |
+| PNG/JPEG/WebP | Raster import/export; JPEG is composited against white |
+| BMP/GIF | Codec-dependent static raster import; no animation document/timeline |
+| Clipboard | Application-local pixel clipboard; Cut samples the active raster layer, Copy merged samples the composite |
+| Recovery | IndexedDB or atomic native recovery-file replacement; not a backup service |
+| Histograms | Full composite RGB component histograms; bounded sampled input histogram in tone inspectors; no editable spot channels |
+| Hardware performance | Not established by CI; software-adapter correctness is not a physical-device benchmark |
 
-## Explicitly not implemented
+## Explicitly outside the current implementation
 
-Camera Raw, CMYK/Lab/spot-channel editing, 16/32-bit HDR documents, ICC soft-proofing, smart objects, Photoshop-compatible adjustment metadata, pen/path editing, healing/content-aware reconstruction, generative AI, liquify, puppet/perspective warp, layer styles, advanced typography/font discovery, linked assets, layer groups/clipping groups, actions/macros, plug-ins, video/timeline, Photoshop cloud services and lossless PSD roundtrips.
+Camera Raw, CMYK/Lab/spot channels, 16/32-bit HDR, ICC soft proofing, smart objects, Photoshop-compatible adjustment metadata, pen/path editing, healing/content-aware reconstruction, generative AI, liquify, puppet/perspective warp, layer styles, advanced typography/font discovery, linked assets, group/clipping semantics, actions/macros, plug-ins, video/timeline, Photoshop cloud services, PSB and lossless PSD roundtrips.
 
-## PSD preservation policy
+Curves and Levels are independent algorithms and UI components, not a claim of byte-identical Photoshop output. Adjustment masks, black/white eyedroppers and automatic color correction are not included. See [tonal adjustments](tonal-adjustments.md) for exact interpolation, channel order and interaction behavior.
 
-Always retain the original PSD. Raw raster layers can differ from the Photoshop composite when the source relies on unsupported masks, effects, groups, smart objects or adjustment metadata. Import warns about this boundary. The application never overwrites the original PSD through its native Save command.
+## File-preservation policy
 
-PSD export writes standard RGB/8 raster layers, with type/shapes/transforms and supported masks rasterized. A document with live adjustment layers exports a flattened compatibility image to preserve its visible appearance. Native `.imagespace` files retain the application-specific editable state.
+Always retain original imports. A source PSD using unsupported masks, effects, groups, smart objects or adjustments can differ from its Photoshop composite after raster-layer import. Import warns about that boundary. Native Save does not overwrite the original PSD.
 
-## Validation interpretation
+PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone documents use manifest version 2 so an older version-1 reader cannot silently discard the new adjustments.
 
-Engine tests validate model, pixel, archive, PSD and compositor invariants. Regression tests cover live cache invalidation and mask/undo behavior. Browser tests use actual pointer/keyboard input and file pickers/downloads, and inspect the rendered screenshot rather than accepting an empty canvas. GPU diagnostics explicitly distinguish an available adapter from an unavailable adapter; a software adapter is not claimed to be hardware acceleration evidence.
+Working limits are 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. Input/archive limits reduce risk but do not guarantee every combination fits a browser's memory budget.
+
+## Validation
+
+Engine and regression suites exercise model, parser and actual Skia pixel output. Browser tests operate real Uno controls through pointer/keyboard/file events and inspect screenshots. The Pages workflow verifies the deployed source SHA and repeats browser acceptance against the public URL. These checks are evidence for the tested behavior, not proof of complete Photoshop parity or production readiness.
