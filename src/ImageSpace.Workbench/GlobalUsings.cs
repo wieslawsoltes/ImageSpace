@@ -1,0 +1,10 @@
+global using Microsoft.UI.Xaml;
+global using Microsoft.UI.Xaml.Controls;
+global using Microsoft.UI.Xaml.Media;
+global using Microsoft.UI.Xaml.Input;
+global using ImageSpace.Core;
+global using ImageSpace.Controls;
+global using ImageSpace.Editing;
+global using ImageSpace.Imaging;
+global using ImageSpace.Filters;
+global using ImageSpace.Editor;

@@ -1,0 +1,1 @@
+<linker><assembly fullname="ImageSpace.App" preserve="all" /><assembly fullname="ImageSpace.Core" preserve="all" /><assembly fullname="ImageSpace.Documents" preserve="all" /></linker>
