@@ -1,7 +1,5 @@
-using System.Numerics;
-using ImageSpace.Documents;
 using ImageSpace.Skia;
-using SkiaSharp;
+
 namespace ImageSpace.Workbench;
 
 public sealed partial class StudioWorkbench
@@ -36,7 +34,7 @@ public sealed partial class StudioWorkbench
                 Item("Undo" + (Session.History.Count > 0 ? " " + Session.History[^1].Name : ""), "Ctrl+Z", () => Run(Session.Undo), Session.CanUndo);
                 Item("Redo", "Ctrl+Shift+Z", () => Run(Session.Redo), Session.CanRedo);
                 Line();
-                Item("Cut", "Ctrl+X", () => Copy(true), editable);
+                Item("Cut", "Ctrl+X", () => Copy(true), editable && pixels);
                 Item("Copy merged", "Ctrl+C", () => Copy(false));
                 Item("Paste as new layer", "Ctrl+V", Paste, _clipboard is not null);
                 Item("Clear selected pixels", "Delete", () => Run(Session.ClearPixels), editable && pixels);
@@ -56,6 +54,8 @@ public sealed partial class StudioWorkbench
                 Item("Flip canvas vertical", "", () => FlipCanvas(false));
                 Item("Trim transparent pixels", "", Trim);
                 Line();
+                Item("Curves adjustment layer", "Ctrl+M", () => AddAdjustment(AdjustmentKind.Curves));
+                Item("Levels adjustment layer", "Ctrl+L", () => AddAdjustment(AdjustmentKind.Levels));
                 Item("Brightness / Contrast…", "", () => _ = FilterDialogAsync(FilterKind.BrightnessContrast), editable && pixels);
                 Item("Saturation…", "", () => _ = FilterDialogAsync(FilterKind.Saturation), editable && pixels);
                 Item("Invert", "Ctrl+I", () => _ = ApplyFilterAsync(FilterKind.Invert), editable && pixels);
@@ -71,12 +71,22 @@ public sealed partial class StudioWorkbench
                 Item("Merge down", "Ctrl+E", MergeDown, editable && Session.Document.Layers.IndexOf(active!) > 0);
                 Item("Flatten image…", "", () => _ = FlattenAsync());
                 Line();
-                Item("Add layer mask", "", () => Run(Session.AddMask), editable);
-                Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "", () => Run(() => Session.Execute("Toggle mask", d => { if (d.ActiveLayer is { } l) l.MaskEnabled = !l.MaskEnabled; })), active?.Mask is not null);
-                Item("Delete mask", "", () => Run(() => Session.Execute("Delete mask", d => { if (d.ActiveLayer is { } l) l.Mask = null; d.EditMask = false; })), active?.Mask is not null);
+                Item("Add layer mask", "", () => Run(Session.AddMask), editable && active?.Kind != LayerKind.Adjustment);
+                Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "", () => Run(() => Session.Execute("Toggle mask", document =>
+                {
+                    if (document.ActiveLayer is { } layer) layer.MaskEnabled = !layer.MaskEnabled;
+                })), active?.Mask is not null);
+                Item("Delete mask", "", () => Run(() => Session.Execute("Delete mask", document =>
+                {
+                    if (document.ActiveLayer is { } layer) layer.Mask = null;
+                    document.EditMask = false;
+                })), active?.Mask is not null);
                 Line();
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
-                Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", d => { if (d.ActiveLayer is { } l) l.Locked = !l.Locked; })), has);
+                Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
+                {
+                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
+                })), has);
                 break;
             case "Type":
                 Item("Edit text…", "", () => { if (active is not null) _ = EditTextAsync(active); }, active?.Kind == LayerKind.Text);
@@ -89,8 +99,8 @@ public sealed partial class StudioWorkbench
                 Item("Inverse", "Ctrl+Shift+I", InvertSelection);
                 Line();
                 Item("Feather…", "", () => _ = FeatherAsync(), Session.Document.Selection is not null);
-                Item("Select layer alpha", "", SelectLayerAlpha, has);
-                Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable);
+                Item("Select layer alpha", "", SelectLayerAlpha, has && active?.Kind != LayerKind.Adjustment);
+                Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable && active?.Kind != LayerKind.Adjustment);
                 break;
             case "Filter":
                 Item("Gaussian blur…", "", () => _ = FilterDialogAsync(FilterKind.GaussianBlur), editable && pixels);
@@ -122,10 +132,10 @@ public sealed partial class StudioWorkbench
                 Item("Channels and histogram", "", () => SetBottomMode("Channels"));
                 Item("History", "", () => SetBottomMode("History"));
                 Line();
-                foreach (var doc in _documents)
+                foreach (var document in _documents)
                 {
-                    var captured = doc;
-                    Item((doc == Session ? "✓ " : "") + doc.Document.Name, "", () => Switch(captured));
+                    var captured = document;
+                    Item((document == Session ? "✓ " : "") + document.Document.Name, "", () => Switch(captured));
                 }
                 break;
             default:
@@ -137,101 +147,24 @@ public sealed partial class StudioWorkbench
         }
         Studio.Menu(anchor, items);
     }
+
     private void ShowAdjustmentMenu(FrameworkElement anchor)
     {
-        var kinds = new[] { AdjustmentKind.BrightnessContrast, AdjustmentKind.Saturation, AdjustmentKind.Invert, AdjustmentKind.Grayscale, AdjustmentKind.Sepia, AdjustmentKind.GaussianBlur };
-        Studio.Menu(anchor, kinds.Select(kind => (kind.ToString(), "", (Action)(() => Run(() => Session.Execute("New adjustment", d => { var layer = new Layer { Name = kind.ToString(), Kind = LayerKind.Adjustment, Adjustment = kind, Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0, Width = d.Width, Height = d.Height }; d.Layers.Add(layer); d.ActiveLayerId = layer.Id; d.EditMask = false; }))), true)));
+        AdjustmentKind[] kinds = [AdjustmentKind.Curves, AdjustmentKind.Levels, AdjustmentKind.BrightnessContrast,
+            AdjustmentKind.Saturation, AdjustmentKind.Invert, AdjustmentKind.Grayscale, AdjustmentKind.Sepia, AdjustmentKind.GaussianBlur];
+        Studio.Menu(anchor, kinds.Select(kind => (kind.ToString(), "", (Action)(() => AddAdjustment(kind)), true)));
     }
-    private void Deselect() => Run(() => Session.Execute("Deselect", d => d.Selection = null));
-    private void SelectAll() => Run(() => Session.Execute("Select all", d => { d.Selection = new(d.Width, d.Height); d.Selection.Fill(Rgba32.White); }));
-    private void InvertSelection() => Run(() => Session.Execute("Inverse selection", d => d.Selection = Selections.Invert(d.Selection, d.Width, d.Height)));
-    private void SelectLayerAlpha() => Run(() => { if (Session.Document.ActiveLayer is not { } l) return; var pixels = Surface.Renderer.RasterizeLayer(Session.Document, l); Session.Execute("Select layer alpha", d => { var mask = new PixelSurface(d.Width, d.Height); for (var y = 0; y < d.Height; y++) for (var x = 0; x < d.Width; x++) mask.Set(x, y, new(255, 255, 255, pixels.Get(x, y).A)); d.Selection = mask; }); });
-    private void Fill(Rgba32 color) => Run(() => { if (Session.Document.ActiveLayer is not { } l) return; Session.Execute("Fill", d => RasterOperations.Fill(d, l, color)); });
-    private void Copy(bool cut)
+
+    private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.Execute("New " + kind + " adjustment", document =>
     {
-        Run(() => { var d = Session.Document; var pixels = Surface.Renderer.Rasterize(d); var bounds = Selections.Bounds(d.Selection) ?? (0, 0, d.Width, d.Height); _clipboard = RasterOperations.Crop(pixels, bounds.Item1, bounds.Item2, bounds.Item3, bounds.Item4); if (d.Selection is not null) for (var y = 0; y < _clipboard.Height; y++) for (var x = 0; x < _clipboard.Width; x++) { var c = _clipboard.Get(x, y); _clipboard.Set(x, y, c.WithAlpha(Rgba32.Byte(c.A * d.Coverage(x + bounds.Item1, y + bounds.Item2)))); } if (cut) Session.ClearPixels(); ShowStatus(cut ? "Selection cut to the application clipboard." : "Merged pixels copied to the application clipboard."); });
-    }
-    private void Paste() => Run(() => { if (_clipboard is null) return; Session.Execute("Paste", d => { var l = Layer.Raster("Pasted pixels", _clipboard.Width, _clipboard.Height); l.Pixels = _clipboard.Snapshot(); l.X = (d.Width - l.Width) / 2; l.Y = (d.Height - l.Height) / 2; d.Layers.Add(l); d.ActiveLayerId = l.Id; d.EditMask = false; }); SelectTool(EditorTool.Move); });
-    private void RasterizeLayer() => Run(() => { var d = Session.Document; var l = d.ActiveLayer; if (l is null || l.Locked || l.Kind == LayerKind.Adjustment) return; var pixels = Surface.Renderer.RasterizeLayer(d, l); Session.Execute("Rasterize layer", _ => { l.Pixels = pixels; l.Kind = LayerKind.Raster; l.X = l.Y = l.Rotation = 0; l.ScaleX = l.ScaleY = 1; l.Width = d.Width; l.Height = d.Height; l.Mask = null; d.EditMask = false; }); });
-    private void MergeDown() => Run(() =>
-    {
-        var d = Session.Document;
-        var upper = d.ActiveLayer;
-        var index = upper is null ? -1 : d.Layers.IndexOf(upper);
-        if (index < 1 || upper!.Locked)
-            return;
-        var lower = d.Layers[index - 1];
-        if (lower.Locked)
-            throw new InvalidOperationException("Unlock the lower layer before merging.");
-        if (upper.Kind == LayerKind.Adjustment || lower.Kind == LayerKind.Adjustment || upper.Blend != LayerBlend.Normal || lower.Blend != LayerBlend.Normal)
-            throw new InvalidOperationException("For adjustments or interacting blend modes, use Flatten Image to preserve the visible result.");
-        var pair = new ImageDocument(d.Width, d.Height) { Layers = [lower.Snapshot(), upper.Snapshot()] };
-        var composite = Surface.Renderer.Rasterize(pair);
-        Session.Execute("Merge down", doc => { var l = Layer.Raster(upper.Name, d.Width, d.Height); l.Pixels = composite; doc.Layers.RemoveRange(index - 1, 2); doc.Layers.Insert(index - 1, l); doc.ActiveLayerId = l.Id; doc.EditMask = false; });
-    });
-    private async Task FlattenAsync()
-    {
-        if (!await ConfirmAsync("Flatten image?", "All layers, including hidden layers, will be replaced by the visible composite. Undo remains available.", "Flatten"))
-            return;
-        Run(() => { var composite = Surface.Renderer.Rasterize(Session.Document); Session.Execute("Flatten image", d => { var l = Layer.Raster("Background", d.Width, d.Height); l.Pixels = composite; d.Layers = [l]; d.ActiveLayerId = l.Id; d.EditMask = false; }); });
-    }
-    private void FlipCanvas(bool horizontal) => Run(() => Session.Execute(horizontal ? "Flip canvas horizontal" : "Flip canvas vertical", d => { foreach (var l in d.Layers) { if (horizontal) { l.X = d.Width - l.X; l.ScaleX = -l.ScaleX; } else { l.Y = d.Height - l.Y; l.ScaleY = -l.ScaleY; } l.Rotation = -l.Rotation; } if (d.Selection is not null) d.Selection = RasterOperations.Flip(d.Selection, horizontal); }));
-    private void Trim() => Run(() => { var mask = Surface.Renderer.Rasterize(Session.Document); var bounds = Selections.Bounds(mask); if (bounds is not { } b) { ShowStatus("The canvas is fully transparent."); return; } Session.Crop(b.X, b.Y, b.Width, b.Height); Surface.Fit(); });
-    private void TogglePanels()
-    {
-        _panelsHidden = !_panelsHidden;
-        _workspace.ColumnDefinitions[3].Width = new GridLength(_panelsHidden ? 0 : 292);
-        _workspace.ColumnDefinitions[2].Width = new GridLength(_panelsHidden ? 0 : 30);
-    }
-    private async Task ApplyFilterAsync(FilterKind kind, float amount = 0, float secondary = 0)
-    {
-        if (_busy)
-            return;
-        var session = Session;
-        var layer = session.Document.ActiveLayer;
-        if (layer?.Pixels is null || layer.Locked)
+        var layer = new Layer
         {
-            ShowStatus("Select an unlocked pixel layer, or rasterize the selected layer first.");
-            return;
-        }
-        _busy = true;
-        _workspace.IsHitTestVisible = false;
-        ShowStatus("Applying " + kind + "…");
-        try
-        {
-            var maskEditing = session.Document.EditMask;
-            var source = (maskEditing ? layer.Mask : layer.Pixels)?.Snapshot() ?? throw new InvalidOperationException("No mask exists on this layer.");
-            PixelSurface? result = null;
-            var usedGpu = false;
-            if (maskEditing && kind == FilterKind.Invert)
-            {
-                result = source.Snapshot();
-                for (var y = 0; y < source.Height; y++)
-                for (var x = 0; x < source.Width; x++)
-                {
-                    var c = source.Get(x, y);
-                    result.Set(x, y, new(255, 255, 255, (byte)(255 - c.A)));
-                }
-            }
-            if (result is null && GpuFilter is not null && !maskEditing)
-            {
-                try
-                {
-                    result = await GpuFilter(source, kind, amount, secondary);
-                    usedGpu = result is not null;
-                }
-                catch (Exception ex) { ShowStatus("GPU unavailable; using the CPU kernel. " + ex.Message); }
-            }
-            if (result is null)
-            {
-                await Task.Yield();
-                result = OperatingSystem.IsBrowser() ? FilterEngine.Apply(source, kind, amount, secondary) : await Task.Run(() => FilterEngine.Apply(source, kind, amount, secondary));
-            }
-            var output = result;
-            session.Execute(kind.ToString(), d => { if (d.Selection is not null) for (var y = 0; y < source.Height; y++) for (var x = 0; x < source.Width; x++) { var p = layer.ToDocument(new(x, y)); output.Set(x, y, Rgba32.Lerp(source.Get(x, y), output.Get(x, y), d.Coverage((int)p.X, (int)p.Y))); } if (maskEditing) layer.Mask = output; else layer.Pixels = output; });
-            ShowStatus(kind + " applied · " + (usedGpu ? "WebGPU compute" : "CPU kernel"));
-        }
-        catch (Exception ex) { ShowStatus(ex.Message); }
-        finally { _busy = false; _workspace.IsHitTestVisible = true; StateChanged?.Invoke(); }
-    }
+            Name = kind.ToString(), Kind = LayerKind.Adjustment, Adjustment = kind,
+            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0, Width = document.Width, Height = document.Height
+        };
+        var index = document.ActiveLayer is { } active ? document.Layers.IndexOf(active) + 1 : document.Layers.Count;
+        document.Layers.Insert(index, layer);
+        document.ActiveLayerId = layer.Id;
+        document.EditMask = false;
+    }));
 }
