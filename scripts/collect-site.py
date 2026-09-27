@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Collect the real Uno publish tree, retaining runtime assets and adding host chrome styles."""
+"""Collect a real Uno publish tree and reject malformed generated JavaScript before deployment."""
 import argparse
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -16,11 +17,18 @@ if not candidates:
 source = candidates[0].parent
 if not list(source.rglob('*.wasm')):
     raise SystemExit('The publish output has no WebAssembly runtime or assemblies')
+manifests = list(source.rglob('AppManifest.js'))
+if len(manifests) != 1:
+    raise SystemExit('Expected exactly one generated Uno application manifest')
+# Validate generated files, not only source: Uno transforms manifest properties.
+for pattern in ('AppManifest.js', 'Host.js', 'WebGpu.js'):
+    files = list(source.rglob(pattern))
+    if len(files) != 1:
+        raise SystemExit(f'Expected one shipped {pattern}')
+    subprocess.run(['node', '--check', str(files[0])], check=True)
+
 args.output.mkdir(parents=True, exist_ok=True)
 shutil.copytree(source, args.output, dirs_exist_ok=True)
-
-# Uno single-project does not automatically include an arbitrary WasmCSS folder.
-# Preserve its generated bootstrap/index and append the app's own stylesheet.
 stylesheet = Path(__file__).resolve().parents[1] / 'src/ImageSpace.App/Platforms/WebAssembly/WasmCSS/Style.css'
 shutil.copyfile(stylesheet, args.output / 'imagespace.css')
 index = args.output / 'index.html'
@@ -30,6 +38,9 @@ if 'href="./imagespace.css"' not in html:
         raise SystemExit('Uno index has no closing head element')
     html = html.replace('</head>', '<link rel="stylesheet" href="./imagespace.css" />\n</head>', 1)
 index.write_text(html, encoding='utf-8')
+# Do not leave precompressed variants containing an older copy of an edited file.
+for suffix in ('.br', '.gz'):
+    index.with_name(index.name + suffix).unlink(missing_ok=True)
 (args.output / '.nojekyll').touch()
 (args.output / 'build-info.json').write_text(json.dumps({
     'application': 'ImageSpace',
@@ -37,4 +48,4 @@ index.write_text(html, encoding='utf-8')
     'version': os.environ.get('VERSION', '0.1.0-alpha.1'),
     'commit': os.environ.get('GITHUB_SHA', 'local')
 }))
-print(f'Collected real Uno application from {source}')
+print(f'Collected and syntax-checked real Uno application from {source}')
