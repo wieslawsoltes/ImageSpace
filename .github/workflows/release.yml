@@ -29,18 +29,19 @@ jobs:
           python3 scripts/fetch-assets.py
           dotnet run --project tests/ImageSpace.Tests -c Release
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
-          dotnet build src/ImageSpace.Workbench -c Release -p:Version="$VERSION"
-          dotnet build src/ImageSpace.WebGpu -c Release -p:Version="$VERSION"
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
             case "$project" in */ImageSpace.App/*) continue ;; esac
-            dotnet pack "$project" -c Release --no-build -p:Version="$VERSION" -o artifacts/packages
+            dotnet pack "$project" -c Release -p:Version="$VERSION" -o artifacts/packages
           done
+          test "$(find artifacts/packages -name '*.nupkg' | wc -l)" -eq 11
           dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:Version="$VERSION" -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
           VERSION="$VERSION" python3 scripts/collect-site.py artifacts/publish site
           npm ci
           npx playwright install --with-deps chromium
           npm run test:browser
+          mkdir -p site/screenshots
+          cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
           npm --prefix packages/webgpu version "$VERSION" --no-git-tag-version --allow-same-version
           npm run pack:webgpu
           git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip

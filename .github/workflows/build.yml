@@ -48,16 +48,18 @@ jobs:
           npm run test:browser
           mkdir -p site/screenshots
           cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
-      - name: Build reusable libraries for desktop and browser
-        run: dotnet build src/ImageSpace.Workbench -c Release
-      - name: Pack NuGet and WebGPU libraries
+          cp artifacts/screenshots/compact-workspace.png site/screenshots/compact-workspace.png
+      - name: Pack all reusable NuGet and WebGPU libraries
         run: |
           mkdir -p artifacts/packages
+          # Build each package in its own target context. A transitive Uno build
+          # may place engine XML documentation in a framework-specific path.
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
             case "$project" in */ImageSpace.App/*) continue ;; esac
-            dotnet pack "$project" -c Release --no-build --no-restore -o artifacts/packages
+            dotnet pack "$project" -c Release -o artifacts/packages
           done
           npm run pack:webgpu
+          test "$(find artifacts/packages -name '*.nupkg' | wc -l)" -eq 11
       - name: Prepare source archive
         run: git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
       - uses: actions/upload-artifact@v7
