@@ -35,7 +35,7 @@ A compact menu and tool-options bar, a vertical custom-drawn toolbox, tabbed doc
 | Selection | Rectangle, ellipse, lasso, contiguous color, add/subtract/intersect, invert, feather and alpha selection |
 | Layers | Sparse RGBA pixel layers, editable multiline type, rectangle/ellipse shapes, visibility, locks, opacity, sixteen blend modes, masks, duplicate/reorder, rasterize and merge |
 | Geometry | Move, eight resize handles, rotation, constrained transforms, numeric properties, non-destructive crop, canvas/image sizing and rotation |
-| Filters | Fifteen CPU kernels; eight browser WebGPU color kernels; six non-destructive adjustment types composed through Skia |
+| Filters | Fourteen CPU kernels; eight browser WebGPU color kernels; six non-destructive adjustment types composed through Skia |
 | Documents | Multiple tabs, tile-sharing undo/redo, native `.imagespace` ZIP archives, bounded RGB/8 PSD interchange, image import and PNG/JPEG/WebP export |
 | Recovery | IndexedDB in the browser and atomic recovery-file replacement on desktop; visible failures instead of silent data loss |
 | Validation | Headless engine and raster regressions, real pointer/keyboard browser tests, rendered-pixel assertions, file roundtrips and explicit GPU/fallback diagnostics |

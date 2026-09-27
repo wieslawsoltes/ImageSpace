@@ -4,8 +4,8 @@ import {decodePng,colorCount} from './png.mjs';
 
 async function boot(page){
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('./?test=1',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>globalThis.imageSpaceDiagnostics?.ready,{timeout:120000});
-  await page.waitForFunction(()=>globalThis.imageSpaceControls?.some(c=>c.name==='Image canvas'&&c.width>100),{timeout:30000});
+  await page.waitForFunction(()=>globalThis.imageSpaceDiagnostics?.ready,null,{timeout:120000});
+  await page.waitForFunction(()=>globalThis.imageSpaceControls?.some(c=>c.name==='Image canvas'&&c.width>100),null,{timeout:30000});
   await page.waitForTimeout(600);return errors;
 }
 async function state(page){return page.evaluate(()=>globalThis.imageSpaceDiagnostics);}
@@ -50,6 +50,6 @@ test('browser WebGPU kernels either validate on an adapter or explicitly use fal
     for(const [kind,amount,secondary] of [['Invert',0,0],['Grayscale',0,0],['Sepia',0,0],['BrightnessContrast',10,20],['Saturation',-100,0],['Gamma',1,0],['Threshold',100,0],['Posterize',4,0]]){const output=await imageSpaceGpu.apply(source,2,2,kind,amount,secondary);checks.push({kind,bytes:Array.from(output)});}return {capabilities,checks};
   });
   await mkdir('artifacts',{recursive:true});await writeFile('artifacts/webgpu-results.json',JSON.stringify(result,null,2));
-  if(!result.capabilities.available){expect(result.capabilities.backend).toMatch(/unavailable|No WebGPU|failed/i);test.info().annotations.push({type:'gpu-fallback',description:result.capabilities.backend});return;}
+  if(!result.capabilities.available){expect(result.capabilities.backend).toMatch(/WebGPU unavailable|No WebGPU adapter/i);test.info().annotations.push({type:'gpu-fallback',description:result.capabilities.backend});return;}
   expect(result.checks).toHaveLength(8);const invert=result.checks.find(x=>x.kind==='Invert').bytes;expect(invert.slice(0,4)).toEqual([155,205,55,255]);expect(invert.slice(8,12)).toEqual([0,0,0,0]);expect(result.checks.find(x=>x.kind==='Gamma').bytes.slice(0,4)).toEqual([100,50,200,255]);for(const check of result.checks){expect(check.bytes[7]).toBe(128);expect(check.bytes[15]).toBe(255);}
 });
