@@ -41,6 +41,10 @@ public sealed class Layer
     public PixelSurface? Pixels { get; set; }
     public PixelSurface? Mask { get; set; }
     public bool MaskEnabled { get; set; } = true;
+    /// <summary>One applies the authored mask; zero reveals the entire layer/effect.</summary>
+    public float MaskDensity { get; set; } = 1;
+    /// <summary>Non-destructive Gaussian sigma in mask-local pixels, applied before its transform.</summary>
+    public float MaskFeather { get; set; }
     public AdjustmentKind Adjustment { get; set; }
     public float Amount { get; set; }
     public float Secondary { get; set; }
