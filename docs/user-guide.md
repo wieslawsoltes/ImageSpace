@@ -18,7 +18,7 @@ Add a layer mask to convert the selection into coverage, including on Curves, Le
 
 The mask Properties inspector exposes Density (0–100%) and Feather (0–32 mask-local pixels) without rewriting the original mask. Density zero bypasses authored hiding. Disable retains the mask for comparison; Delete removes it but remains undoable. The Properties **Invert mask** action operates on the whole authored mask; **Ctrl+I** follows the active pixel selection. Locks protect both source content and mask changes.
 
-**Composite**, **Mask** and **Overlay** are inspection modes. Grayscale shows effective coverage after density/feather; the red overlay highlights hidden regions. These views do not add undo entries and are never baked into native saves or image exports. Back to layer content restores the ordinary inspector. Masks share their layer transform: raster-mask movement is linked to its pixels, while an adjustment layer's transform places its mask. Independent/unlinked transforms and group masks remain unsupported.
+**Composite**, **Mask** and **Overlay** are inspection modes. Grayscale shows effective coverage after density/feather; the red overlay highlights hidden regions. These views do not add undo entries and are never baked into native saves or image exports. Back to layer content restores the ordinary inspector. Masks start linked to their layer. Use the chain icon to unlink a mask, select its thumbnail and use Move, the eight resize handles, rotation or the numeric placement fields to edit it independently. Relinking preserves the current appearance; Align mask to layer deliberately resets placement. Group masks remain unsupported. See [independent mask placement](mask-placement.md).
 
 ## Transform and navigate
 
@@ -50,7 +50,7 @@ History lets you return to previous edits. Redo remains available until a new ed
 
 ## Save and recover
 
-**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Tone-only files use manifest version 2. Adjustment masks, non-default density/feather and fractional adjustment crossfades require version 3; the reader accepts versions 1–3. Older readers reject unsupported versions rather than silently dropping the new features. History and transient selections are not stored in archives.
+**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Tone-only files use manifest version 2. Adjustment masks, non-default density/feather and fractional adjustment crossfades require version 3. Independent mask placement/link metadata requires version 4; the reader accepts versions 1–4. Older readers reject unsupported versions rather than silently dropping the new features. History and transient selections are not stored in archives.
 
 Browser saves are downloads. Native saves use file pickers; cancellation does not mark the document as saved. PNG/JPEG/WebP export the visible composite. JPEG places transparency against white.
 
@@ -86,3 +86,7 @@ Select → Expand selection, Contract selection, Border selection and Smooth sel
 ## Extended PSD interchange
 
 PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names and resolution are retained. Simple user-mask data is placed into the pixel layer’s coordinates, honoring disabled/inverted/default coverage and supported density/feather parameters. Layer masks remain editable after import. Embedded profiles, vector/group/clipping semantics and advanced metadata are warned about rather than silently claimed to survive. Export uses ZIP raster channels by default; application shapes/type/transforms and masks are still rasterized by the export callback.
+
+## Move a mask independently
+
+Select its mask thumbnail and click the chain icon to unlink it. Use Move, the eight resize handles, the rotation handle, or Mask X/Y/width/height/angle in Properties. Arrow keys nudge by one pixel; Shift+Arrow uses ten. Relink to move the layer/mask pair together without changing the current placement. Align mask to layer is a separate explicit reset. Save as `.imagespace` to retain editable affine placement; PSD export bakes it into pixels. See [mask placement](mask-placement.md).

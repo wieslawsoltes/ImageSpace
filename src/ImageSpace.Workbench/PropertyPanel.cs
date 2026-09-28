@@ -10,7 +10,10 @@ public sealed class PropertyPanel : UserControl
     private MaskPropertiesEditor? _maskEditor;
     public event Action<MaskPreviewMode>? MaskPreviewChanged;
     private readonly StackPanel _body = new() { Spacing = 8, Margin = new Thickness(10, 9, 10, 10) };
-    public ImageRenderer? Renderer { get; set; }
+    public ImageRenderer? Renderer
+    {
+        get; set;
+    }
     public event Action<Layer>? TextEditRequested;
     public event Action<string>? Error;
     public event Action? PreviewInvalidated;
@@ -22,25 +25,31 @@ public sealed class PropertyPanel : UserControl
         VerticalContentAlignment = VerticalAlignment.Stretch;
         Content = new ScrollViewer
         {
-            Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _body,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
     }
 
     public void Bind(EditorSession session)
     {
-        if (!ReferenceEquals(_session, session)) { _toneEditor = null; _maskEditor = null; }
+        if (!ReferenceEquals(_session, session))
+        {
+            _toneEditor = null;
+            _maskEditor = null;
+        }
         _session = session;
         Refresh();
     }
 
     public void Refresh()
     {
-        if (_session is null) return;
+        if (_session is null)
+            return;
         var layer = _session.Document.ActiveLayer;
         var maskEditing = _session.Document.EditMask && layer?.Mask is not null;
         var tone = !maskEditing && layer is { Kind: LayerKind.Adjustment, Adjustment: AdjustmentKind.Curves or AdjustmentKind.Levels };
-        PreferredHeightChanged?.Invoke(maskEditing ? 310 : tone ? 414 : 224);
+        PreferredHeightChanged?.Invoke(maskEditing ? (layer!.MaskLinked ? 352 : 452) : tone ? 414 : 224);
         if (maskEditing && _maskEditor?.LayerId == layer!.Id)
         {
             _maskEditor.RefreshFromDocument();
@@ -105,16 +114,22 @@ public sealed class PropertyPanel : UserControl
                 {
                     item.ScaleX = item.ScaleY = 1;
                     item.Rotation = 0;
-                })) { Width = 123 }));
-            if (layer.Kind is not (LayerKind.Text or LayerKind.Rectangle or LayerKind.Ellipse)) return;
+                }))
+                {
+                    Width = 123
+                }));
+            if (layer.Kind is not (LayerKind.Text or LayerKind.Rectangle or LayerKind.Ellipse))
+                return;
             var color = Studio.TextInput(layer.Color.Hex, "Layer color", 123);
             color.LostFocus += (_, _) =>
             {
-                if (_refreshing || _session.Document.ActiveLayer?.Id != layer.Id) return;
+                if (_refreshing || _session.Document.ActiveLayer?.Id != layer.Id)
+                    return;
                 try
                 {
                     var value = Rgba32.Parse(color.Text);
-                    if (value != layer.Color) Edit("Layer color", item => item.Color = value);
+                    if (value != layer.Color)
+                        Edit("Layer color", item => item.Color = value);
                 }
                 catch (Exception error) { Error?.Invoke(error.Message); }
             };
@@ -143,8 +158,12 @@ public sealed class PropertyPanel : UserControl
 
     private void Edit(string name, Action<Layer> action)
     {
-        if (_session?.Document.ActiveLayer is not { Locked: false } layer || _session.IsInTransaction) return;
-        try { _session.Execute(name, _ => action(layer)); }
+        if (_session?.Document.ActiveLayer is not { Locked: false } layer || _session.IsInTransaction)
+            return;
+        try
+        {
+            _session.Execute(name, _ => action(layer));
+        }
         catch (Exception error) { Error?.Invoke(error.Message); }
     }
 }

@@ -16,7 +16,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Dodge/burn/smudge | Basic kernels; not healing/content-aware or advanced Photoshop tonal tools |
 | Fill/gradient | Foreground/background, active pixel layer, linear gradient |
 | Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather, alpha selection, expand/contract/border/smooth (square neighborhoods; preserves soft coverage) |
-| Masks | Pixel/text/shape/adjustment coverage masks, density, feather, selection-aware pixel tools and view-only grayscale/overlay inspection; groups and unlinked mask transforms remain unsupported |
+| Masks | Pixel/text/shape/adjustment coverage masks, density, feather, selection-aware pixel tools and view-only grayscale/overlay inspection; linked/unlinked affine mask placement, relink-without-jump, independent pointer/numeric transforms; group masks remain unsupported |
 | Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; no groups or clipping chains |
 | Type | Editable multiline Inter text, size, weight and color; no complete typography/font-discovery UI |
 | Shapes | Rectangle, rounded rectangle and ellipse, fill and stroke; no pen/path editor |
@@ -27,7 +27,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Live adjustments | Brightness/contrast, saturation, invert, grayscale, sepia, blur, **Curves and Levels** |
 | Curves | Four channels, up to sixteen points per channel, shape-preserving cubic interpolation, numeric/keyboard edits, presets and live transactional dragging |
 | Levels | Four channels, input/output endpoints, gamma, draggable histogram handles, numeric edits and presets |
-| Native archive | Version 1–3 reader; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
+| Native archive | Version 1–4 reader; version 4 preserves independent affine mask placement; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
 | PSD | Bounded PSD v1 RGB/8 raw/PackBits/ZIP/ZIP-prediction channels; Unicode names, DPI, raster offsets/visibility/opacity/blend keys and placed user masks; not lossless Photoshop roundtripping |
 | PSB/high-bit/CMYK PSD | Rejected rather than silently interpreted as equivalent |
 | PNG/JPEG/WebP | Raster import/export; JPEG is composited against white |
@@ -47,7 +47,7 @@ Curves and Levels are independent algorithms and UI components, not a claim of b
 
 Always retain original imports. A source PSD using unsupported vector/combined mask semantics, effects, groups, smart objects or adjustments can differ from its Photoshop composite after raster-layer import. Import warns about that boundary. Native Save does not overwrite the original PSD.
 
-PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone-only documents use manifest version 2. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require version 3, preventing older readers from silently discarding those semantics.
+PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone-only documents use manifest version 2. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require version 3, preventing older readers from silently discarding those semantics. Unlink metadata or a nonidentity mask frame requires version 4. PSD export bakes that placement rather than preserving its editable affine metadata.
 
 Working limits are 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. Input/archive limits reduce risk but do not guarantee every combination fits a browser's memory budget.
 
@@ -58,3 +58,5 @@ Engine and regression suites exercise model, parser and actual Skia pixel output
 ## CPU and allocation improvements
 
 Tile-native fills/imports, contiguous RGBA rows, sparse histogram scans, pooled row-based bilinear resizing, crop and flip, direct native Skia pixel spans, and streaming archive pixel entries. Correctness is checked against scalar implementations, independent PSD fixtures, archive/mask regressions and actual browser interactions. Timing results are CPU-only, workload-specific and retained by CI; no claim of physical GPU speed follows from them.
+
+Linked/unlinked mask placement and exact streaming selection outlines are described in [mask-placement.md](mask-placement.md).

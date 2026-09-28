@@ -1,8 +1,12 @@
 using System.Numerics;
+using System.Text.Json.Serialization;
 
 namespace ImageSpace.Core;
 
-public enum LayerKind { Raster, Text, Rectangle, Ellipse, Adjustment }
+public enum LayerKind
+{
+    Raster, Text, Rectangle, Ellipse, Adjustment
+}
 public enum LayerBlend
 {
     Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn,
@@ -18,36 +22,98 @@ public sealed class Layer
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "Layer";
-    public LayerKind Kind { get; set; }
+    public LayerKind Kind
+    {
+        get; set;
+    }
     public bool Visible { get; set; } = true;
-    public bool Locked { get; set; }
+    public bool Locked
+    {
+        get; set;
+    }
     public float Opacity { get; set; } = 1;
-    public LayerBlend Blend { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
+    public LayerBlend Blend
+    {
+        get; set;
+    }
+    public float X
+    {
+        get; set;
+    }
+    public float Y
+    {
+        get; set;
+    }
     public float ScaleX { get; set; } = 1;
     public float ScaleY { get; set; } = 1;
-    public float Rotation { get; set; }
+    public float Rotation
+    {
+        get; set;
+    }
     public float Width { get; set; } = 200;
     public float Height { get; set; } = 140;
     public Rgba32 Color { get; set; } = new(54, 145, 230);
     public Rgba32 StrokeColor { get; set; } = Rgba32.White;
-    public float StrokeWidth { get; set; }
-    public float CornerRadius { get; set; }
+    public float StrokeWidth
+    {
+        get; set;
+    }
+    public float CornerRadius
+    {
+        get; set;
+    }
     public string Text { get; set; } = "Your text";
     public string FontFamily { get; set; } = "Inter";
     public float FontSize { get; set; } = 64;
-    public bool Bold { get; set; }
-    public PixelSurface? Pixels { get; set; }
-    public PixelSurface? Mask { get; set; }
+    public bool Bold
+    {
+        get; set;
+    }
+    public PixelSurface? Pixels
+    {
+        get; set;
+    }
+    public PixelSurface? Mask
+    {
+        get; set;
+    }
+    /// <summary>Linked placements are layer-local; unlinked placements are document-local.</summary>
+    public bool MaskLinked { get; set; } = true;
+    public AffinePlacement MaskPlacement { get; set; } = AffinePlacement.Identity;
+    [JsonIgnore] public Matrix3x2 MaskDocumentTransform => MaskLinked ? MaskPlacement.Matrix * Transform : MaskPlacement.Matrix;
+    [JsonIgnore]
+    public Matrix3x2 MaskLocalTransform
+    {
+        get
+        {
+            if (MaskLinked)
+                return MaskPlacement.Matrix;
+            if (!Matrix3x2.Invert(Transform, out var inverse))
+                throw new InvalidOperationException("The layer transform cannot be inverted.");
+            return MaskPlacement.Matrix * inverse;
+        }
+    }
+
     public bool MaskEnabled { get; set; } = true;
     /// <summary>One applies the authored mask; zero reveals the entire layer/effect.</summary>
     public float MaskDensity { get; set; } = 1;
     /// <summary>Non-destructive Gaussian sigma in mask-local pixels, applied before its transform.</summary>
-    public float MaskFeather { get; set; }
-    public AdjustmentKind Adjustment { get; set; }
-    public float Amount { get; set; }
-    public float Secondary { get; set; }
+    public float MaskFeather
+    {
+        get; set;
+    }
+    public AdjustmentKind Adjustment
+    {
+        get; set;
+    }
+    public float Amount
+    {
+        get; set;
+    }
+    public float Secondary
+    {
+        get; set;
+    }
     public CurvesAdjustment Curves { get; set; } = new();
     public LevelsAdjustment Levels { get; set; } = new();
 
@@ -68,7 +134,10 @@ public sealed class Layer
 
     public static Layer Raster(string name, int width, int height) => new()
     {
-        Name = name, Kind = LayerKind.Raster, Width = width, Height = height,
+        Name = name,
+        Kind = LayerKind.Raster,
+        Width = width,
+        Height = height,
         Pixels = new PixelSurface(width, height)
     };
 }

@@ -43,6 +43,8 @@ internal static partial class Program
         RegisterBulkTests();
         RegisterMorphologyTests();
         RegisterPsdTests();
+        RegisterPlacementTests();
+        RegisterContourTests();
         Directory.CreateDirectory("artifacts/fixtures");
         File.WriteAllBytes("artifacts/fixtures/user-mask-zip.psd", Fixture(ImageSpace.Documents.PsdCompression.ZipPrediction, flags: 16));
         var failed = 0;

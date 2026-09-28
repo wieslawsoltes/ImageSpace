@@ -74,6 +74,9 @@ public sealed partial class StudioWorkbench
                 Item("Add layer mask", "", () => Run(Session.AddMask), editable && active?.Mask is null);
                 Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "",
                     () => Run(() => Session.SetMaskEnabled(active?.MaskEnabled == false)), editable && active?.Mask is not null);
+                Item(active?.MaskLinked == false ? "Link mask to layer" : "Unlink mask from layer", "",
+                    () => Run(() => Session.SetMaskLinked(active?.MaskLinked == false)), editable && active?.Mask is not null);
+                Item("Align mask to layer", "", () => Run(Session.AlignMaskToLayer), editable && active?.Mask is not null);
                 Item("Invert mask", "", () => Run(Session.InvertMask), editable && active?.Mask is not null);
                 Item("Delete mask", "", () => Run(Session.DeleteMask), editable && active?.Mask is not null);
                 Line();

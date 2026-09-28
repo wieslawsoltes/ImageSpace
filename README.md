@@ -19,9 +19,15 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a single monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.2.0-alpha.1 — expanded compatibility and performance release, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.3.0-alpha.1 — expanded compatibility and performance release, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
+
+## New in 0.3
+
+**Independent masks, precise contours, less interaction overhead.** Link/unlink masks without a jump, manipulate their affine frame with on-canvas handles or numeric inputs, and retain the result through undo and native saves. Prepared pixel mappings avoid repeated trigonometry in coverage loops. Placement-only changes reuse the recorded mask source, while selection outlines stream exact merged boundary segments with width-bounded scratch storage instead of allocating a full image.
+
+[Read the 0.3 workflow and technical contract](docs/mask-placement.md).
 
 ## Editing capabilities
 
@@ -54,9 +60,9 @@ The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** a
 
 ## Adjustment-mask editing
 
-Pixel, type, shape and adjustment masks share the same editing target pipeline. The mask inspector provides density, feather, inversion, enable/disable and view-only grayscale/red-overlay inspection. Painting and filters modify authored coverage, never the underlying layer pixels. Density/feather remain independently editable. Masks currently share their layer transform; groups and independent mask transforms are not yet supported.
+Pixel, type, shape and adjustment masks share the same editing target pipeline. The mask inspector provides density, feather, inversion, enable/disable and view-only grayscale/red-overlay inspection. Painting and filters modify authored coverage, never the underlying layer pixels. Density/feather remain independently editable. Masks are linked by default. Unlink them to move, rotate and resize coverage independently, then relink without a visual jump. The viewport handles and numeric inspector share the same affine geometry; authored mask pixels are never resampled by placement edits. Group masks remain unsupported.
 
-[Mask editing architecture and verification](docs/mask-editing.md) covers alpha compositing, archive version 3, regression coverage and the exact supported boundary.
+[Mask editing](docs/mask-editing.md) covers alpha compositing and coverage tools. [Mask placement and interaction performance](docs/mask-placement.md) documents linked/unlinked coordinate frames, archive version 4, source-cache reuse and exact streaming selection contours.
 
 ## Compatibility and measured CPU performance
 

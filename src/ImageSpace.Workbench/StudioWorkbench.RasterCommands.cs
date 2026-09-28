@@ -12,14 +12,20 @@ public sealed partial class StudioWorkbench
         document.Selection = Selections.Invert(document.Selection, document.Width, document.Height)));
     private void SelectLayerAlpha() => Run(() =>
     {
-        if (Session.Document.ActiveLayer is not { } layer) return;
-        if (Session.Document.EditMask) { Session.LoadMaskSelection(); return; }
+        if (Session.Document.ActiveLayer is not { } layer)
+            return;
+        if (Session.Document.EditMask)
+        {
+            Session.LoadMaskSelection();
+            return;
+        }
         var pixels = Surface.Renderer.RasterizeLayer(Session.Document, layer);
         Session.Execute("Select layer alpha", document =>
         {
             var mask = new PixelSurface(document.Width, document.Height);
             for (var y = 0; y < document.Height; y++)
-                for (var x = 0; x < document.Width; x++) mask.Set(x, y, new Rgba32(255, 255, 255, pixels.Get(x, y).A));
+                for (var x = 0; x < document.Width; x++)
+                    mask.Set(x, y, new Rgba32(255, 255, 255, pixels.Get(x, y).A));
             document.Selection = mask;
         });
     });
@@ -31,7 +37,11 @@ public sealed partial class StudioWorkbench
         if (cut && (document.EditMask || document.ActiveLayer is not { Locked: false, Pixels: not null }))
             throw new InvalidOperationException("Cut requires an unlocked pixel layer, not a mask.");
         var bounds = document.Selection is null ? (0, 0, document.Width, document.Height) : Selections.Bounds(document.Selection);
-        if (bounds is null) { ShowStatus("The selection is empty. Nothing was copied."); return; }
+        if (bounds is null)
+        {
+            ShowStatus("The selection is empty. Nothing was copied.");
+            return;
+        }
         var pixels = cut ? Surface.Renderer.RasterizeLayer(document, document.ActiveLayer!) : Surface.Renderer.Rasterize(document);
         var region = bounds.Value;
         _clipboard = RasterOperations.Crop(pixels, region.Item1, region.Item2, region.Item3, region.Item4);
@@ -44,13 +54,15 @@ public sealed partial class StudioWorkbench
                     _clipboard.Set(x, y, color.WithAlpha(Rgba32.Byte(color.A * document.Coverage(x + region.Item1, y + region.Item2))));
                 }
         }
-        if (cut) Session.ClearPixels();
+        if (cut)
+            Session.ClearPixels();
         ShowStatus(cut ? "Active-layer pixels cut to the application clipboard." : "Merged pixels copied to the application clipboard.");
     });
 
     private void Paste() => Run(() =>
     {
-        if (_clipboard is null) return;
+        if (_clipboard is null)
+            return;
         Session.Execute("Paste", document =>
         {
             var layer = Layer.Raster("Pasted pixels", _clipboard.Width, _clipboard.Height);
@@ -68,7 +80,8 @@ public sealed partial class StudioWorkbench
     {
         var document = Session.Document;
         var layer = document.ActiveLayer;
-        if (layer is null || layer.Locked || layer.Kind == LayerKind.Adjustment) return;
+        if (layer is null || layer.Locked || layer.Kind == LayerKind.Adjustment)
+            return;
         var pixels = Surface.Renderer.RasterizeLayer(document, layer);
         Session.Execute("Rasterize layer", _ =>
         {
@@ -79,6 +92,10 @@ public sealed partial class StudioWorkbench
             layer.Width = document.Width;
             layer.Height = document.Height;
             layer.Mask = null;
+            layer.MaskLinked = true;
+            layer.MaskPlacement = AffinePlacement.Identity;
+            layer.MaskDensity = 1;
+            layer.MaskFeather = 0;
             document.EditMask = false;
         });
     });
@@ -88,9 +105,11 @@ public sealed partial class StudioWorkbench
         var document = Session.Document;
         var upper = document.ActiveLayer;
         var index = upper is null ? -1 : document.Layers.IndexOf(upper);
-        if (index < 1 || upper!.Locked) return;
+        if (index < 1 || upper!.Locked)
+            return;
         var lower = document.Layers[index - 1];
-        if (lower.Locked) throw new InvalidOperationException("Unlock the lower layer before merging.");
+        if (lower.Locked)
+            throw new InvalidOperationException("Unlock the lower layer before merging.");
         if (upper.Kind == LayerKind.Adjustment || lower.Kind == LayerKind.Adjustment || upper.Blend != LayerBlend.Normal || lower.Blend != LayerBlend.Normal)
             throw new InvalidOperationException("For adjustments or interacting blend modes, use Flatten Image to preserve the visible result.");
         var pair = new ImageDocument(document.Width, document.Height) { Layers = [lower.Snapshot(), upper.Snapshot()] };
@@ -108,7 +127,8 @@ public sealed partial class StudioWorkbench
 
     private async Task FlattenAsync()
     {
-        if (!await ConfirmAsync("Flatten image?", "All layers, including hidden layers, will be replaced by the visible composite. Undo remains available.", "Flatten")) return;
+        if (!await ConfirmAsync("Flatten image?", "All layers, including hidden layers, will be replaced by the visible composite. Undo remains available.", "Flatten"))
+            return;
         Run(() =>
         {
             var composite = Surface.Renderer.Rasterize(Session.Document);
@@ -127,17 +147,33 @@ public sealed partial class StudioWorkbench
     {
         foreach (var layer in document.Layers)
         {
-            if (horizontal) { layer.X = document.Width - layer.X; layer.ScaleX = -layer.ScaleX; }
-            else { layer.Y = document.Height - layer.Y; layer.ScaleY = -layer.ScaleY; }
+            if (horizontal)
+            {
+                layer.X = document.Width - layer.X;
+                layer.ScaleX = -layer.ScaleX;
+            }
+            else
+            {
+                layer.Y = document.Height - layer.Y;
+                layer.ScaleY = -layer.ScaleY;
+            }
             layer.Rotation = -layer.Rotation;
+            MaskGeometry.TransformUnlinked(layer, horizontal
+                ? new System.Numerics.Matrix3x2(-1, 0, 0, 1, document.Width, 0)
+                : new System.Numerics.Matrix3x2(1, 0, 0, -1, 0, document.Height));
         }
-        if (document.Selection is not null) document.Selection = RasterOperations.Flip(document.Selection, horizontal);
+        if (document.Selection is not null)
+            document.Selection = RasterOperations.Flip(document.Selection, horizontal);
     }));
 
     private void Trim() => Run(() =>
     {
         var mask = Surface.Renderer.Rasterize(Session.Document);
-        if (Selections.Bounds(mask) is not { } bounds) { ShowStatus("The canvas is fully transparent."); return; }
+        if (Selections.Bounds(mask) is not { } bounds)
+        {
+            ShowStatus("The canvas is fully transparent.");
+            return;
+        }
         Session.Crop(bounds.X, bounds.Y, bounds.Width, bounds.Height);
         Surface.Fit();
     });
@@ -151,7 +187,8 @@ public sealed partial class StudioWorkbench
 
     private async Task ApplyFilterAsync(FilterKind kind, float amount = 0, float secondary = 0)
     {
-        if (_busy || Session.IsInTransaction) return;
+        if (_busy || Session.IsInTransaction)
+            return;
         var session = Session;
         var layer = session.Document.ActiveLayer;
         if (layer is not { Locked: false } || PixelTarget.Get(session.Document, layer) is not { } target)
@@ -163,6 +200,9 @@ public sealed partial class StudioWorkbench
         var maskEditing = session.Document.EditMask;
         var source = target.Snapshot();
         var sourceRevision = target.Revision;
+        var targetTransform = PixelTarget.Prepare(session.Document, layer).ToDocumentMatrix;
+        var selection = session.Document.Selection;
+        var selectionRevision = selection?.Revision ?? 0;
         _busy = true;
         _workspace.IsHitTestVisible = false;
         ShowStatus("Applying " + kind + "…");
@@ -172,7 +212,11 @@ public sealed partial class StudioWorkbench
             var usedGpu = false;
             if (GpuFilter is not null && !maskEditing)
             {
-                try { output = await GpuFilter(source, kind, amount, secondary); usedGpu = output is not null; }
+                try
+                {
+                    output = await GpuFilter(source, kind, amount, secondary);
+                    usedGpu = output is not null;
+                }
                 catch (Exception error) { ShowStatus("GPU unavailable; using the CPU kernel. " + error.Message); }
             }
             if (output is null)
@@ -185,7 +229,9 @@ public sealed partial class StudioWorkbench
             // Do not apply an asynchronous result to a changed document, edit channel, layer or tile revision.
             if (!ReferenceEquals(session, Session) || session.Revision != revision || session.IsInTransaction ||
                 !ReferenceEquals(session.Document.ActiveLayer, layer) || session.Document.EditMask != maskEditing ||
-                !ReferenceEquals(PixelTarget.Get(session.Document, layer), target) || target.Revision != sourceRevision)
+                !ReferenceEquals(PixelTarget.Get(session.Document, layer), target) || target.Revision != sourceRevision ||
+                PixelTarget.Prepare(session.Document, layer).ToDocumentMatrix != targetTransform ||
+                !ReferenceEquals(session.Document.Selection, selection) || (selection?.Revision ?? 0) != selectionRevision)
                 throw new InvalidOperationException("The edit target changed while the filter was running. Its result was discarded.");
             session.Execute(kind.ToString(), document => PixelTarget.Replace(document, layer,
                 PixelEdits.RestrictToSelection(document, layer, source, output)));

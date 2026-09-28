@@ -1,4 +1,5 @@
 using ImageSpace.Core;
+using System.Numerics;
 using ImageSpace.Imaging;
 using ImageSpace.Filters;
 namespace ImageSpace.Editing;
@@ -151,12 +152,15 @@ public sealed partial class EditorSession
     }
     public void AddMask()
     {
-        if (Document.ActiveLayer is not { Locked: false } layer || layer.Mask is not null) return;
+        if (Document.ActiveLayer is not { Locked: false } layer || layer.Mask is not null)
+            return;
         // Allocate/validate first. A failed allocation cannot leave a half-created history entry.
         var mask = MaskOperations.FromSelection(Document, layer);
         Execute("Add layer mask", document =>
         {
             layer.Mask = mask;
+            layer.MaskLinked = true;
+            layer.MaskPlacement = AffinePlacement.Identity;
             layer.MaskDensity = 1;
             layer.MaskFeather = 0;
             layer.MaskEnabled = true;
@@ -173,22 +177,39 @@ public sealed partial class EditorSession
     }
     public void ClearPixels()
     {
-        if (Document.ActiveLayer is not { Locked: false } layer || PixelTarget.Get(Document, layer) is null) return;
+        if (Document.ActiveLayer is not { Locked: false } layer || PixelTarget.Get(Document, layer) is null)
+            return;
         Execute(Document.EditMask ? "Clear mask coverage" : "Clear pixels", document => PixelEdits.Clear(document, layer));
     }
     public void Crop(int x, int y, int width, int height)
     {
         PixelSurface.ValidateSize(width, height);
-        Execute("Crop canvas", d => { d.Width = width; d.Height = height; foreach (var l in d.Layers) { l.X -= x; l.Y -= y; } d.Selection = null; });
+        Execute("Crop canvas", d => { d.Width = width; d.Height = height; foreach (var l in d.Layers) { l.X -= x; l.Y -= y; MaskGeometry.TransformUnlinked(l, Matrix3x2.CreateTranslation(-x, -y)); } d.Selection = null; });
     }
     public void ResizeImage(int width, int height)
     {
         PixelSurface.ValidateSize(width, height);
-        Execute("Image size", d => { var sx = (float)width / d.Width; var sy = (float)height / d.Height; foreach (var l in d.Layers) { l.X *= sx; l.Y *= sy; l.ScaleX *= sx; l.ScaleY *= sy; } d.Width = width; d.Height = height; d.Selection = null; });
+        Execute("Image size", d => { var sx = (float)width / d.Width; var sy = (float)height / d.Height; foreach (var l in d.Layers) { l.X *= sx; l.Y *= sy; l.ScaleX *= sx; l.ScaleY *= sy; MaskGeometry.TransformUnlinked(l, Matrix3x2.CreateScale(sx, sy)); } d.Width = width; d.Height = height; d.Selection = null; });
     }
     public void RotateCanvas(bool clockwise)
     {
-        Execute("Rotate canvas", d => { var w = d.Width; var h = d.Height; foreach (var l in d.Layers) { var x = l.X; var y = l.Y; l.X = clockwise ? h - y : y; l.Y = clockwise ? x : w - x; l.Rotation += clockwise ? 90 : -90; } d.Width = h; d.Height = w; d.Selection = null; });
+        Execute("Rotate canvas", d =>
+        {
+            var w = d.Width;
+            var h = d.Height;
+            foreach (var l in d.Layers)
+            {
+                var x = l.X;
+                var y = l.Y;
+                l.X = clockwise ? h - y : y;
+                l.Y = clockwise ? x : w - x;
+                l.Rotation += clockwise ? 90 : -90;
+                MaskGeometry.TransformUnlinked(l, clockwise ? new Matrix3x2(0, 1, -1, 0, h, 0) : new Matrix3x2(0, -1, 1, 0, 0, w));
+            }
+            d.Width = h;
+            d.Height = w;
+            d.Selection = null;
+        });
     }
     private long EstimateHistoryBytes()
     {
@@ -197,8 +218,8 @@ public sealed partial class EditorSession
         {
             foreach (var surface in state.Layers.SelectMany(l => new[] { l.Pixels, l.Mask }).Append(state.Selection))
                 if (surface is not null)
-                foreach (var t in surface.EnumerateTiles())
-                    tiles.Add(t.Identity);
+                    foreach (var t in surface.EnumerateTiles())
+                        tiles.Add(t.Identity);
         }
         return (long)tiles.Count * PixelSurface.TileSize * PixelSurface.TileSize * 4;
     }

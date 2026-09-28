@@ -173,7 +173,8 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 if (layer is null || layer.Locked)
                     return;
                 _original = layer.Snapshot();
-                _session.Begin(_handle == 8 ? "Rotate layer" : _handle >= 0 ? "Transform layer" : "Move layer");
+                var targetName = IsIndependentMask(layer) ? "mask" : "layer";
+                _session.Begin((_handle == 8 ? "Rotate " : _handle >= 0 ? "Transform " : "Move ") + targetName);
                 _gesture = _handle == 8 ? "rotate" : _handle >= 0 ? "resize" : "move";
             }
             else if (Tool is EditorTool.Marquee or EditorTool.EllipseSelect or EditorTool.Lasso)
@@ -216,11 +217,12 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                     e.Handled = true;
                     return;
                 }
-                if (layer is null) throw new InvalidOperationException("Select a pixel layer or its mask.");
+                if (layer is null)
+                    throw new InvalidOperationException("Select a pixel layer or its mask.");
                 var editableSurface = PixelTarget.RequireEditable(doc, layer);
                 if (Tool == EditorTool.Fill)
                 {
-                    var local = layer.ToLocal(_start);
+                    var local = PixelTarget.ToLocal(doc, layer, _start);
                     var sampled = doc.EditMask ? MaskOperations.ToGrayscale(editableSurface) : editableSurface;
                     var region = Selections.Contiguous(sampled, (int)MathF.Floor(local.X), (int)MathF.Floor(local.Y), Tolerance);
                     _session.Execute("Paint bucket", d => PixelEdits.Fill(d, layer, Foreground, region));
@@ -234,7 +236,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                     if (Tool == EditorTool.Clone && _cloneSource is null)
                         throw new InvalidOperationException("Alt-click to set the clone source first.");
                     var target = PixelTarget.RequireEditable(doc, layer);
-                    var offset = _cloneSource is null ? Vector2.Zero : layer.ToLocal(_cloneSource.Value) - layer.ToLocal(_start);
+                    var offset = _cloneSource is null ? Vector2.Zero : PixelTarget.ToLocal(doc, layer, _cloneSource.Value) - PixelTarget.ToLocal(doc, layer, _start);
                     _brush.Begin(target, offset);
                     Paint(point);
                 }
@@ -256,6 +258,11 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         {
             Pan = _startPan + _cursor - _start;
             ViewChanged?.Invoke();
+        }
+        else if (layer is not null && TransformIndependentMask(layer, world,
+            (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0))
+        {
+            // The mask frame was updated without changing layer content or resampling pixels.
         }
         else if (_gesture == "move" && layer is not null && _original is not null)
         {
@@ -410,9 +417,9 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     private int HitHandle(Layer layer, Vector2 screen)
     {
         for (var i = 0; i < 8; i++)
-        if (Vector2.Distance(ToScreen(layer.ToDocument(Handles[i] * new Vector2(layer.Width, layer.Height))), screen) < 8)
-            return i;
-        var rotation = ToScreen(layer.ToDocument(new(layer.Width / 2, 0))) + new Vector2(0, -28);
+            if (Vector2.Distance(ToScreen(FrameToDocument(layer, Handles[i] * FrameDimensions(layer))), screen) < 8)
+                return i;
+        var rotation = ToScreen(FrameToDocument(layer, new(FrameDimensions(layer).X / 2, 0))) + new Vector2(0, -28);
         return Vector2.Distance(rotation, screen) < 8 ? 8 : -1;
     }
     private void Resize(Layer layer, Vector2 world, bool uniform)
