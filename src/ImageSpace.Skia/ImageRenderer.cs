@@ -124,8 +124,14 @@ public sealed partial class ImageRenderer : IDisposable
             if (layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0)
             {
                 var coverage = _masks.Get(layer, canvas.LocalClipBounds, false, DrawTiles);
-                using var maskPaint = new SKPaint { BlendMode = SKBlendMode.DstIn, ImageFilter = coverage };
-                canvas.DrawPaint(maskPaint);
+                // DstIn must cover the entire isolated layer, including transparent pixels
+                // outside the filter output. Drawing the filtered paint directly lets
+                // Skia cull those pixels and leaves the unmasked content visible.
+                using var maskPaint = new SKPaint { BlendMode = SKBlendMode.DstIn };
+                canvas.SaveLayer(maskPaint);
+                using var coveragePaint = new SKPaint { ImageFilter = coverage };
+                canvas.DrawPaint(coveragePaint);
+                canvas.Restore();
             }
             canvas.Restore();
         }
