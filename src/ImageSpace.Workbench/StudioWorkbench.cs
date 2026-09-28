@@ -151,7 +151,14 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     {
         var zoom = $"{Surface.Zoom * 100:0.#}%";
         var metrics = $"{Session.Document.Width} × {Session.Document.Height} px   ·   RGB/8   ·   {Session.Document.Layers.Count} layers";
-        if (_zoom.Text != zoom) _zoom.Text = zoom;
+        if (_zoom.Text != zoom)
+        {
+            _zoom.Text = zoom;
+            // View changes do not refresh the document or rebuild its tabs. Keep
+            // the active retained caption in sync after Fit, resize and wheel zoom.
+            if (_documentTabs.TryGetValue(Session, out var tab))
+                tab.Title.SetLabel(Session.Document.Name + (Session.IsDirty ? " *" : "") + "  @ " + zoom);
+        }
         if (_metrics.Text != metrics) _metrics.Text = metrics;
     }
     private sealed record DocumentTab(Border Host, StudioButton Title, StudioButton Close);
