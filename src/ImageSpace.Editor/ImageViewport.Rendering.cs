@@ -1,12 +1,21 @@
 using System.Numerics;
 using Windows.Foundation;
 using ImageSpace.Core;
+using ImageSpace.Imaging;
 using ImageSpace.Skia;
 using SkiaSharp;
 namespace ImageSpace.Editor;
 
 public sealed partial class ImageViewport
 {
+    public long SelectionOutlineSegments
+    {
+        get; private set;
+    }
+    public long SelectionOutlineScratchBytes
+    {
+        get; private set;
+    }
     private PixelSurface? _selection; private long _selectionRevision = -1; private SKPath? _selectionPath;
     private void Render(SKCanvas c, Size area)
     {
@@ -25,8 +34,10 @@ public sealed partial class ImageViewport
         DrawCheckerboard(c, rect, area, paint);
         c.Translate(Pan.X, Pan.Y);
         c.Scale(Zoom);
-        if (!d.EditMask || d.ActiveLayer?.Mask is null) _maskPreview = MaskPreviewMode.Composite;
-        if (_maskPreview != MaskPreviewMode.Grayscale) Renderer.Draw(c, d);
+        if (!d.EditMask || d.ActiveLayer?.Mask is null)
+            _maskPreview = MaskPreviewMode.Composite;
+        if (_maskPreview != MaskPreviewMode.Grayscale)
+            Renderer.Draw(c, d);
         if (d.EditMask && d.ActiveLayer is { Mask: not null } maskedLayer)
             _maskPreviewRenderer.Draw(c, Renderer, d, maskedLayer, _maskPreview);
         if (ShowGrid && Zoom > 4)
@@ -96,12 +107,7 @@ public sealed partial class ImageViewport
         }
         if (Tool is EditorTool.Brush or EditorTool.Pencil or EditorTool.Eraser or EditorTool.Clone or EditorTool.Dodge or EditorTool.Burn or EditorTool.Smudge)
         {
-            paint.Style = SKPaintStyle.Stroke;
-            paint.StrokeWidth = 1;
-            paint.Color = SKColors.White;
-            c.DrawCircle(_cursor.X, _cursor.Y, Math.Max(2, Brush.Size * Zoom / 2), paint);
-            paint.Color = new(0, 0, 0, 170);
-            c.DrawCircle(_cursor.X, _cursor.Y, Math.Max(3, Brush.Size * Zoom / 2 + 1), paint);
+            DrawBrushCursor(c);
         }
         if (ShowRulers)
             DrawRulers(c, area);
@@ -110,35 +116,26 @@ public sealed partial class ImageViewport
     {
         var mask = d.Selection;
         if (mask is null)
+        {
+            _selection = null;
+            _selectionPath?.Dispose();
+            _selectionPath = null;
+            SelectionOutlineSegments = SelectionOutlineScratchBytes = 0;
             return;
+        }
         if (!ReferenceEquals(mask, _selection) || mask.Revision != _selectionRevision)
         {
             _selection = mask;
             _selectionRevision = mask.Revision;
             _selectionPath?.Dispose();
             _selectionPath = new SKPath();
-            var data = mask.ToRgba();
-            var w = mask.Width;
-            var h = mask.Height;
-            for (var y = 0; y < h; y++)
-            for (var x = 0; x < w; x++)
+            var statistics = SelectionContours.Trace(mask, edge =>
             {
-                if (data[(y * w + x) * 4 + 3] < 128)
-                    continue;
-                if (x == 0 || data[(y * w + x - 1) * 4 + 3] < 128)
-                    Edge(x, y, x, y + 1);
-                if (y == 0 || data[((y - 1) * w + x) * 4 + 3] < 128)
-                    Edge(x, y, x + 1, y);
-                if (x == w - 1 || data[(y * w + x + 1) * 4 + 3] < 128)
-                    Edge(x + 1, y, x + 1, y + 1);
-                if (y == h - 1 || data[((y + 1) * w + x) * 4 + 3] < 128)
-                    Edge(x, y + 1, x + 1, y + 1);
-            }
-            void Edge(float x, float y, float xx, float yy)
-            {
-                _selectionPath.MoveTo(x, y);
-                _selectionPath.LineTo(xx, yy);
-            }
+                _selectionPath.MoveTo(edge.X1, edge.Y1);
+                _selectionPath.LineTo(edge.X2, edge.Y2);
+            });
+            SelectionOutlineSegments = statistics.Segments;
+            SelectionOutlineScratchBytes = statistics.ScratchBytes;
         }
         if (_selectionPath is not null)
             Ants(c, _selectionPath, 1 / Zoom);
@@ -156,11 +153,11 @@ public sealed partial class ImageViewport
     {
         using var p = new SKPaint { Color = new(97, 167, 236), StrokeWidth = 1, IsAntialias = true, Style = SKPaintStyle.Stroke };
         using var outline = new SKPath();
-        var dimensions = new Vector2(layer.Width, layer.Height);
+        var dimensions = FrameDimensions(layer);
         var corners = new[] { Vector2.Zero, new Vector2(1, 0), Vector2.One, new Vector2(0, 1) };
         for (var i = 0; i < 4; i++)
         {
-            var point = ToScreen(layer.ToDocument(corners[i] * dimensions));
+            var point = ToScreen(FrameToDocument(layer, corners[i] * dimensions));
             if (i == 0)
                 outline.MoveTo(point.X, point.Y);
             else
@@ -170,7 +167,7 @@ public sealed partial class ImageViewport
         c.DrawPath(outline, p);
         foreach (var handle in Handles)
         {
-            var point = ToScreen(layer.ToDocument(handle * dimensions));
+            var point = ToScreen(FrameToDocument(layer, handle * dimensions));
             p.Style = SKPaintStyle.Fill;
             p.Color = new(39, 39, 39);
             c.DrawRect(point.X - 3, point.Y - 3, 6, 6, p);
@@ -178,7 +175,7 @@ public sealed partial class ImageViewport
             p.Color = new(140, 193, 245);
             c.DrawRect(point.X - 3, point.Y - 3, 6, 6, p);
         }
-        var top = ToScreen(layer.ToDocument(new(layer.Width / 2, 0)));
+        var top = ToScreen(FrameToDocument(layer, new(dimensions.X / 2, 0)));
         c.DrawLine(top.X, top.Y, top.X, top.Y - 25, p);
         c.DrawCircle(top.X, top.Y - 28, 3, p);
     }

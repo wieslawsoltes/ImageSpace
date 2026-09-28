@@ -21,6 +21,7 @@ public sealed partial class ImageRenderer : IDisposable
     }
     public long ToneFilterBuilds => _adjustments.ToneFilterBuilds;
     public long MaskFilterBuilds => _masks.Builds;
+    public long MaskSourceBuilds => _masks.SourceBuilds;
     public int CachedTiles => _tiles.Count;
 
     public void SetTypeface(SKTypeface typeface)

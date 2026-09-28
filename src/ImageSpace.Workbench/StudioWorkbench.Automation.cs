@@ -50,6 +50,19 @@ public sealed partial class StudioWorkbench
             json.WriteBoolean("maskEnabled", layer?.MaskEnabled ?? false);
             json.WriteNumber("maskRevision", layer?.Mask?.Revision ?? 0);
             json.WriteNumber("maskFilterBuilds", Surface.Renderer.MaskFilterBuilds);
+            json.WriteNumber("maskSourceBuilds", Surface.Renderer.MaskSourceBuilds);
+            json.WriteBoolean("maskLinked", layer?.MaskLinked ?? true);
+            var maskMatrix = layer?.MaskDocumentTransform ?? System.Numerics.Matrix3x2.Identity;
+            json.WriteNumber("maskX", maskMatrix.M31);
+            json.WriteNumber("maskY", maskMatrix.M32);
+            json.WriteNumber("maskWidth", layer?.Mask?.Width ?? 0);
+            json.WriteNumber("maskHeight", layer?.Mask?.Height ?? 0);
+            json.WriteNumber("maskM11", maskMatrix.M11);
+            json.WriteNumber("maskM12", maskMatrix.M12);
+            json.WriteNumber("maskM21", maskMatrix.M21);
+            json.WriteNumber("maskM22", maskMatrix.M22);
+            json.WriteNumber("selectionOutlineSegments", Surface.SelectionOutlineSegments);
+            json.WriteNumber("selectionOutlineScratchBytes", Surface.SelectionOutlineScratchBytes);
             json.WriteString("maskPreview", Surface.MaskPreview.ToString());
             json.WriteBoolean("selection", document.Selection is not null);
             json.WriteNumber("curvePoints", layer?.Curves.Rgb.Points.Length ?? 0);
@@ -77,27 +90,33 @@ public sealed partial class StudioWorkbench
                 var viewport = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
                 Visit(root, viewport);
                 foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
-                    if (popup.Child is { } child) Visit(child, viewport);
+                    if (popup.Child is { } child)
+                        Visit(child, viewport);
                 void Visit(DependencyObject element, Rect clip)
                 {
-                    if (!visited.Add(element) || visited.Count > 15000) return;
+                    if (!visited.Add(element) || visited.Count > 15000)
+                        return;
                     if (element is FrameworkElement view)
                     {
-                        if (view.Visibility != Visibility.Visible || view.Opacity <= 0) return;
+                        if (view.Visibility != Visibility.Visible || view.Opacity <= 0)
+                            return;
                         try
                         {
                             var bounds = view.TransformToVisual(root).TransformBounds(new Rect(0, 0, view.ActualWidth, view.ActualHeight));
                             var visible = bounds;
                             visible.Intersect(clip);
-                            if (view is ScrollViewer) clip = visible;
+                            if (view is ScrollViewer)
+                                clip = visible;
                             var name = AutomationProperties.GetName(view);
-                            if (string.IsNullOrEmpty(name)) name = view switch
-                            {
-                                ButtonBase { Content: string text } => text,
-                                TextBox text => text.PlaceholderText,
-                                _ => ""
-                            };
-                            if (view == Surface) name = "Image canvas";
+                            if (string.IsNullOrEmpty(name))
+                                name = view switch
+                                {
+                                    ButtonBase { Content: string text } => text,
+                                    TextBox text => text.PlaceholderText,
+                                    _ => ""
+                                };
+                            if (view == Surface)
+                                name = "Image canvas";
                             if (name.Length > 0 && visible.Width > 1 && visible.Height > 1)
                             {
                                 json.WriteStartObject();
@@ -108,13 +127,15 @@ public sealed partial class StudioWorkbench
                                 json.WriteNumber("width", visible.Width);
                                 json.WriteNumber("height", visible.Height);
                                 json.WriteBoolean("enabled", view is not Control control || control.IsEnabled);
-                                if (view is TextBox input) json.WriteString("value", input.Text);
+                                if (view is TextBox input)
+                                    json.WriteString("value", input.Text);
                                 json.WriteEndObject();
                             }
                         }
                         catch (ArgumentException) { return; }
                     }
-                    for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Visit(VisualTreeHelper.GetChild(element, i), clip);
+                    for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+                        Visit(VisualTreeHelper.GetChild(element, i), clip);
                 }
             }
             json.WriteEndArray();

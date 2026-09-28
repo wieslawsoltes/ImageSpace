@@ -13,11 +13,16 @@ public static class MaskOperations
         var width = layer.Pixels?.Width ?? Dimension(layer.Width);
         var height = layer.Pixels?.Height ?? Dimension(layer.Height);
         var result = new PixelSurface(width, height);
+        var mapping = new PixelMapping(document, layer.Transform);
         // Reveal All means the whole layer, including currently off-canvas content.
-        if (document.Selection is null) { result.Fill(Rgba32.White); return result; }
+        if (document.Selection is null)
+        {
+            result.Fill(Rgba32.White);
+            return result;
+        }
         for (var y = 0; y < height; y++)
             for (var x = 0; x < width; x++)
-                result.Set(x, y, CoverageColor(Rgba32.Byte(PixelTarget.Coverage(document, layer, x, y) * 255)));
+                result.Set(x, y, CoverageColor(Rgba32.Byte(mapping.Coverage(x, y) * 255)));
         return result;
     }
 
@@ -61,7 +66,7 @@ public static class MaskOperations
     public static PixelSurface ToDocumentSelection(ImageDocument document, Layer layer)
     {
         var mask = layer.Mask ?? throw new InvalidOperationException("This layer has no mask.");
-        if (!System.Numerics.Matrix3x2.Invert(layer.Transform, out var inverse))
+        if (!System.Numerics.Matrix3x2.Invert(layer.MaskDocumentTransform, out var inverse))
             throw new InvalidOperationException("The layer transform cannot be inverted.");
         var selection = new PixelSurface(document.Width, document.Height);
         for (var y = 0; y < document.Height; y++)
@@ -69,7 +74,8 @@ public static class MaskOperations
             {
                 var point = System.Numerics.Vector2.Transform(new(x + .5f, y + .5f), inverse);
                 if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || point.X < 0 || point.Y < 0 ||
-                    point.X >= mask.Width || point.Y >= mask.Height) continue;
+                    point.X >= mask.Width || point.Y >= mask.Height)
+                    continue;
                 selection.Set(x, y, CoverageColor(mask.Get((int)MathF.Floor(point.X), (int)MathF.Floor(point.Y)).A));
             }
         return selection;

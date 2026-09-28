@@ -7,8 +7,8 @@
     <UnoFeatures>SkiaRenderer;</UnoFeatures>
     <ApplicationTitle>ImageSpace</ApplicationTitle>
     <ApplicationId>io.github.wieslawsoltes.imagespace</ApplicationId>
-    <ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
-    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>0.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
     <ApplicationPublisher>ImageSpace contributors</ApplicationPublisher>
     <Description>Local-first layered image editing with Uno Platform, Skia and WebGPU.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

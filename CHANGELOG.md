@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-alpha.1 — 2026-09-28
+
+- Linked/unlinked affine layer-mask placement, pointer and numeric transformations, relink-without-jump and transactional keyboard nudging.
+- Mask-local painting, fills, gradients and selection filtering use prepared coordinate mappings; transformed brush cursors match the actual tip frame.
+- Native archive v4 preserves independent mask metadata while retaining reads of versions 1–3.
+- Two-stage mask source/placement filter caching avoids rerecording authored mask content during movement/density changes.
+- Exact streaming selection contours use O(width) pooled scratch and merged collinear edges instead of an image-sized temporary.
+- Expanded geometry, archive, compositor, topology and real-browser regression coverage; interaction CPU benchmarks.
+
+
 ## 0.2.0-alpha.1 — 2026-09-28
 
 - Merged all pending mask/compositor and dependency work; aligned Skia 3.119.4 and current CI Actions.

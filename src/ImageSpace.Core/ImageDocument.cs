@@ -5,15 +5,30 @@ public sealed class ImageDocument
     private const int MaximumLayerExtent = 1_000_000;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "Untitled";
-    public int Width { get; set; }
-    public int Height { get; set; }
+    public int Width
+    {
+        get; set;
+    }
+    public int Height
+    {
+        get; set;
+    }
     public double Dpi { get; set; } = 72;
     /// <summary>Bottom-to-top painter order.</summary>
     public List<Layer> Layers { get; set; } = [];
-    public Guid ActiveLayerId { get; set; }
+    public Guid ActiveLayerId
+    {
+        get; set;
+    }
     /// <summary>Null means unrestricted editing; an empty mask means nothing is selected.</summary>
-    public PixelSurface? Selection { get; set; }
-    public bool EditMask { get; set; }
+    public PixelSurface? Selection
+    {
+        get; set;
+    }
+    public bool EditMask
+    {
+        get; set;
+    }
     public Layer? ActiveLayer => Layers.FirstOrDefault(layer => layer.Id == ActiveLayerId);
 
     public ImageDocument(int width, int height, string name = "Untitled")
@@ -29,8 +44,12 @@ public sealed class ImageDocument
 
     public ImageDocument Snapshot() => new(Width, Height, Name)
     {
-        Id = Id, Dpi = Dpi, ActiveLayerId = ActiveLayerId, EditMask = EditMask,
-        Selection = Selection?.Snapshot(), Layers = Layers.Select(layer => layer.Snapshot()).ToList()
+        Id = Id,
+        Dpi = Dpi,
+        ActiveLayerId = ActiveLayerId,
+        EditMask = EditMask,
+        Selection = Selection?.Snapshot(),
+        Layers = Layers.Select(layer => layer.Snapshot()).ToList()
     };
 
     public void Validate()
@@ -65,11 +84,15 @@ public sealed class ImageDocument
             if (!float.IsFinite(layer.MaskDensity) || layer.MaskDensity is < 0 or > 1 ||
                 !float.IsFinite(layer.MaskFeather) || layer.MaskFeather is < 0 or > 32)
                 throw new InvalidDataException("Mask density must be 0–1 and feather must be 0–32 pixels.");
+            if (layer.MaskPlacement is null)
+                throw new InvalidDataException("Missing mask placement.");
+            layer.MaskPlacement.Validate();
             layer.Curves.Validate();
             layer.Levels.Validate();
         }
         if (Selection is not null && (Selection.Width != Width || Selection.Height != Height))
             throw new InvalidDataException("Selection dimensions differ from the canvas.");
-        if (ActiveLayer is null && Layers.Count > 0) ActiveLayerId = Layers[^1].Id;
+        if (ActiveLayer is null && Layers.Count > 0)
+            ActiveLayerId = Layers[^1].Id;
     }
 }

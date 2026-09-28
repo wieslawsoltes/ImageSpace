@@ -72,6 +72,8 @@ public static class DocumentArchive
 
     private static int RequiredVersion(ImageDocument document)
     {
+        if (document.Layers.Any(layer => !layer.MaskLinked || layer.MaskPlacement != AffinePlacement.Identity))
+            return 4;
         // Existing version-1/2 readers ignore new metadata. Refuse that silent visual loss
         // by marking any mask-specific or output-crossfade semantics as version 3.
         if (document.Layers.Any(layer =>
@@ -191,7 +193,7 @@ public static class DocumentArchive
         }
         var manifest = JsonSerializer.Deserialize<Manifest>(Read("manifest.json", 4 * 1024 * 1024), Json)
             ?? throw new InvalidDataException("Missing document manifest.");
-        if (manifest.Version is not (1 or 2 or 3))
+        if (manifest.Version is not (1 or 2 or 3 or 4))
         {
             throw new InvalidDataException($"Unsupported document version {manifest.Version}.");
         }
@@ -207,6 +209,9 @@ public static class DocumentArchive
             Layers = manifest.Layers.Select(record => record.Metadata).ToList()
         };
         document.Validate();
+        if (manifest.Version < 4 && document.Layers.Any(layer =>
+            !layer.MaskLinked || layer.MaskPlacement != AffinePlacement.Identity))
+            throw new InvalidDataException("Independent mask placement requires archive version 4.");
         foreach (var record in manifest.Layers)
         {
             var layer = record.Metadata;

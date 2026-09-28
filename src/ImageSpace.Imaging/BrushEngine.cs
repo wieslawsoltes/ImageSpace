@@ -25,7 +25,8 @@ public sealed class BrushEngine
         var target = PixelTarget.Get(document, layer);
         if (target is null)
             return;
-        var point = layer.ToLocal(position);
+        var mapping = PixelTarget.Prepare(document, layer);
+        var point = mapping.ToLocal(position);
         var size = Math.Clamp(settings.Size, 1, 1024);
         var spacing = Math.Max(0.5f, size * Math.Clamp(settings.Spacing, 0.01f, 1));
         pressure = settings.Pressure ? Math.Clamp(pressure, 0.05f, 1) : 1;
@@ -56,51 +57,51 @@ public sealed class BrushEngine
             var minY = Math.Max(0, (int)MathF.Floor(p.Y - radius));
             var maxY = Math.Min(target.Height - 1, (int)MathF.Ceiling(p.Y + radius));
             for (var y = minY; y <= maxY; y++)
-            for (var x = minX; x <= maxX; x++)
-            {
-                var distance = Vector2.Distance(new(x + 0.5f, y + 0.5f), p) / radius;
-                if (distance > 1)
-                    continue;
-                var hardness = mode == PaintMode.Pencil ? 1 : Math.Clamp(settings.Hardness, 0, 1);
-                var edge = distance <= hardness ? 1 : Math.Clamp((1 - distance) / Math.Max(0.001f, 1 - hardness), 0, 1);
-                var coverage = PixelTarget.Coverage(document, layer, x, y);
-                var alpha = Math.Clamp(edge * settings.Opacity * settings.Flow * force * coverage, 0, 1);
-                if (alpha <= 0)
-                    continue;
-                var old = target.Get(x, y);
-                var ink = color;
-                if (document.EditMask)
+                for (var x = minX; x <= maxX; x++)
                 {
-                    var value = mode switch
+                    var distance = Vector2.Distance(new(x + 0.5f, y + 0.5f), p) / radius;
+                    if (distance > 1)
+                        continue;
+                    var hardness = mode == PaintMode.Pencil ? 1 : Math.Clamp(settings.Hardness, 0, 1);
+                    var edge = distance <= hardness ? 1 : Math.Clamp((1 - distance) / Math.Max(0.001f, 1 - hardness), 0, 1);
+                    var coverage = mapping.Coverage(x, y);
+                    var alpha = Math.Clamp(edge * settings.Opacity * settings.Flow * force * coverage, 0, 1);
+                    if (alpha <= 0)
+                        continue;
+                    var old = target.Get(x, y);
+                    var ink = color;
+                    if (document.EditMask)
                     {
-                        PaintMode.Eraser => (byte)0,
-                        PaintMode.Clone => _source?.Get((int)MathF.Floor(x + _cloneOffset.X),
-                            (int)MathF.Floor(y + _cloneOffset.Y)).A ?? old.A,
-                        PaintMode.Dodge => Rgba32.Byte(old.A * 1.15 + 10),
-                        PaintMode.Burn => Rgba32.Byte(old.A * .85),
-                        PaintMode.Smudge => _source?.Get((int)MathF.Floor(_previous?.X ?? p.X),
-                            (int)MathF.Floor(_previous?.Y ?? p.Y)).A ?? old.A,
-                        _ => MaskOperations.Luminance(color)
-                    };
-                    var strength = mode is PaintMode.Brush or PaintMode.Pencil ? alpha * color.A / 255f : alpha;
-                    target.Set(x, y, MaskOperations.CoverageColor(Rgba32.Byte(old.A + (value - old.A) * strength)));
-                    continue;
+                        var value = mode switch
+                        {
+                            PaintMode.Eraser => (byte)0,
+                            PaintMode.Clone => _source?.Get((int)MathF.Floor(x + _cloneOffset.X),
+                                (int)MathF.Floor(y + _cloneOffset.Y)).A ?? old.A,
+                            PaintMode.Dodge => Rgba32.Byte(old.A * 1.15 + 10),
+                            PaintMode.Burn => Rgba32.Byte(old.A * .85),
+                            PaintMode.Smudge => _source?.Get((int)MathF.Floor(_previous?.X ?? p.X),
+                                (int)MathF.Floor(_previous?.Y ?? p.Y)).A ?? old.A,
+                            _ => MaskOperations.Luminance(color)
+                        };
+                        var strength = mode is PaintMode.Brush or PaintMode.Pencil ? alpha * color.A / 255f : alpha;
+                        target.Set(x, y, MaskOperations.CoverageColor(Rgba32.Byte(old.A + (value - old.A) * strength)));
+                        continue;
+                    }
+                    if (mode == PaintMode.Eraser)
+                    {
+                        target.Set(x, y, old.WithAlpha(Rgba32.Byte(old.A * (1 - alpha))));
+                        continue;
+                    }
+                    if (mode == PaintMode.Clone && _source is not null)
+                        ink = _source.Get((int)(x + _cloneOffset.X), (int)(y + _cloneOffset.Y));
+                    if (mode == PaintMode.Dodge)
+                        ink = new(Rgba32.Byte(old.R * 1.15 + 10), Rgba32.Byte(old.G * 1.15 + 10), Rgba32.Byte(old.B * 1.15 + 10), old.A);
+                    if (mode == PaintMode.Burn)
+                        ink = new(Rgba32.Byte(old.R * 0.85), Rgba32.Byte(old.G * 0.85), Rgba32.Byte(old.B * 0.85), old.A);
+                    if (mode == PaintMode.Smudge && _source is not null)
+                        ink = _source.Get((int)(_previous?.X ?? p.X), (int)(_previous?.Y ?? p.Y));
+                    target.Set(x, y, mode is PaintMode.Dodge or PaintMode.Burn ? Rgba32.Lerp(old, ink, alpha) : Rgba32.Over(old, ink, alpha));
                 }
-                if (mode == PaintMode.Eraser)
-                {
-                    target.Set(x, y, old.WithAlpha(Rgba32.Byte(old.A * (1 - alpha))));
-                    continue;
-                }
-                if (mode == PaintMode.Clone && _source is not null)
-                    ink = _source.Get((int)(x + _cloneOffset.X), (int)(y + _cloneOffset.Y));
-                if (mode == PaintMode.Dodge)
-                    ink = new(Rgba32.Byte(old.R * 1.15 + 10), Rgba32.Byte(old.G * 1.15 + 10), Rgba32.Byte(old.B * 1.15 + 10), old.A);
-                if (mode == PaintMode.Burn)
-                    ink = new(Rgba32.Byte(old.R * 0.85), Rgba32.Byte(old.G * 0.85), Rgba32.Byte(old.B * 0.85), old.A);
-                if (mode == PaintMode.Smudge && _source is not null)
-                    ink = _source.Get((int)(_previous?.X ?? p.X), (int)(_previous?.Y ?? p.Y));
-                target.Set(x, y, mode is PaintMode.Dodge or PaintMode.Burn ? Rgba32.Lerp(old, ink, alpha) : Rgba32.Over(old, ink, alpha));
-            }
         }
     }
     public void End()

@@ -86,3 +86,6 @@ Select → Expand selection, Contract selection, Border selection and Smooth sel
 ## Extended PSD interchange
 
 PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names and resolution are retained. Simple user-mask data is placed into the pixel layer’s coordinates, honoring disabled/inverted/default coverage and supported density/feather parameters. Layer masks remain editable after import. Embedded profiles, vector/group/clipping semantics and advanced metadata are warned about rather than silently claimed to survive. Export uses ZIP raster channels by default; application shapes/type/transforms and masks are still rasterized by the export callback.
+\n## Move a mask independently
+
+Select its mask thumbnail and click the chain icon to unlink it. Use Move, the eight resize handles, the rotation handle, or Mask X/Y/width/height/angle in Properties. Arrow keys nudge by one pixel; Shift+Arrow uses ten. Relink to move the layer/mask pair together without changing the current placement. Align mask to layer is a separate explicit reset. Save as `.imagespace` to retain editable affine placement; PSD export bakes it into pixels. See [mask placement](mask-placement.md).
