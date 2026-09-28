@@ -25,6 +25,18 @@ async function drag(page, from, to) {
 async function number(page, name, value) {
   await click(page, name); await page.keyboard.press('Control+a');
   await page.keyboard.insertText(String(value)); await page.keyboard.press('Enter');
+  const readers = {
+    'Mask X': s => s.maskX,
+    'Mask Y': s => s.maskY,
+    'Mask width': s => Math.hypot(s.maskM11, s.maskM12) * s.maskWidth,
+    'Mask height': s => Math.hypot(s.maskM21, s.maskM22) * s.maskHeight,
+    'Mask angle': s => Math.atan2(s.maskM12, s.maskM11) * 180 / Math.PI
+  };
+  // Read-only diagnostics are sampled, not a synchronous mutation API. Wait for
+  // this specific edit before deriving coordinates for the next real pointer input.
+  const read = readers[name];
+  if (!read) throw new Error(`Missing numeric assertion for ${name}`);
+  await expect.poll(async () => read(await state(page)), {message:`${name} must reach the requested model value`}).toBeCloseTo(value, 3);
 }
 async function boot(page) {
   await page.goto('./?test=1', { waitUntil: 'domcontentloaded' });
@@ -38,7 +50,6 @@ async function capture(page, name) {
   await mkdir('artifacts/screenshots', { recursive: true });
   await page.screenshot({ path: `artifacts/screenshots/${name}.png` });
 }
-
 
 test('unlinked mask moves independently, relinks without a jump, and roundtrips its affine frame', async ({ page }) => {
   await boot(page);
@@ -95,12 +106,12 @@ test('mask numeric affine editing and real on-canvas resizing leave authored pix
   await number(page, 'Mask width', 500); await number(page, 'Mask height', 350);
   await number(page, 'Mask angle', 30); await number(page, 'Mask X', 20); await number(page, 'Mask Y', 30);
   await click(page, 'Move tool (V)');
-  await expect.poll(async () => (await state(page)).maskM12).toBeCloseTo(.25, 4);
   const before = await state(page);
+  expect(before.maskM12).toBeCloseTo(.25, 4);
+  expect(before.maskX).toBeCloseTo(20, 3);
+  expect(before.maskY).toBeCloseTo(30, 3);
   const toWorld = (x, y) => ({x: before.maskX + x * before.maskM11 + y * before.maskM21,
     y: before.maskY + x * before.maskM12 + y * before.maskM22});
-  // Authoring dimensions are not the canvas or the displayed affine dimensions.
-  // The sample is 1000 x 680; never assume a 700-pixel mask when picking a handle.
   const corner = toWorld(before.maskWidth, before.maskHeight);
   const target = toWorld(before.maskWidth * 1.1, before.maskHeight * 1.1);
   await drag(page, await point(page,corner.x,corner.y), await point(page,target.x,target.y));
@@ -108,6 +119,7 @@ test('mask numeric affine editing and real on-canvas resizing leave authored pix
   await expect.poll(async () => (await state(page)).maskM11).toBeCloseTo(before.maskM11 * 1.1, 2);
   await expect.poll(async () => (await state(page)).maskM22).toBeCloseTo(before.maskM22 * 1.1, 2);
   await expect.poll(async () => (await state(page)).maskX).toBeCloseTo(20, 3);
+  await expect.poll(async () => (await state(page)).maskY).toBeCloseTo(30, 3);
   expect((await state(page)).activeX).toBe(0);
   expect((await state(page)).maskRevision).toBe(revision);
   await click(page, 'Mask view Grayscale');

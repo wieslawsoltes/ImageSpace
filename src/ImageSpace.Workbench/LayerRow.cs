@@ -11,6 +11,11 @@ internal sealed class LayerRow : Grid
     private readonly IconView _eyeIcon = new("eye");
     private readonly LayerThumbnail _thumbnail = new();
     private readonly Border _thumbnailHost;
+    private readonly Border _thumbnailSelection;
+    private readonly SolidColorBrush _selectedBackground = Studio.Brush("#484848");
+    private readonly SolidColorBrush _normalBackground = Studio.Brush("#303030");
+    private readonly SolidColorBrush _selectedBorder = Studio.Brush("#b6b6b6");
+    private readonly SolidColorBrush _normalBorder = Studio.Brush("#171717");
     private readonly StackPanel _suffix = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     private readonly IconView _lock = new("lock") { Width = 14, Height = 14, Margin = new Thickness(4), Visibility = Visibility.Collapsed };
     private readonly TextBlock _type = Studio.Label("", 12, "#a9a9a9");
@@ -18,10 +23,7 @@ internal sealed class LayerRow : Grid
     private IconView? _linkIcon;
     private LayerThumbnail? _maskThumbnail;
     private bool? _selected, _maskSelected;
-    public Guid LayerId
-    {
-        get;
-    }
+    public Guid LayerId { get; }
     private Layer? Current => _session.Document.Layers.FirstOrDefault(layer => layer.Id == LayerId);
 
     public LayerRow(EditorSession session, Guid layerId, Action<string> error, Action rename)
@@ -30,42 +32,40 @@ internal sealed class LayerRow : Grid
         _error = error;
         LayerId = layerId;
         Height = 43;
-        ColumnDefinitions.Add(new()
-        {
-            Width = new GridLength(28)
-        });
-        ColumnDefinitions.Add(new()
-        {
-            Width = new GridLength(54)
-        });
-        ColumnDefinitions.Add(new()
-        {
-            Width = new GridLength(1, GridUnitType.Star)
-        });
-        ColumnDefinitions.Add(new()
-        {
-            Width = GridLength.Auto
-        });
+        ColumnDefinitions.Add(new() { Width = new GridLength(28) });
+        ColumnDefinitions.Add(new() { Width = new GridLength(54) });
+        ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         _eye = new StudioButton("", () => Edit("Layer visibility", layer => layer.Visible = !layer.Visible))
         {
-            Width = 27,
-            Height = 32,
-            Padding = new Thickness(4),
-            Content = _eyeIcon
+            Width = 27, Height = 32, Padding = new Thickness(4), Content = _eyeIcon
         };
         Children.Add(_eye);
-        _thumbnailHost = new Border { BorderThickness = new Thickness(1), Child = _thumbnail, Margin = new Thickness(3, 5, 4, 5) };
-        // Clicking either the content thumbnail or name selects the same target.
+
+        // Changing BorderThickness on selection used to resize the SKCanvasElement,
+        // remeasure both rows and redraw both thumbnails. Keep geometry invariant:
+        // the second border pixel is an independent retained decoration.
+        var thumbnailContent = new Grid();
+        thumbnailContent.Children.Add(_thumbnail);
+        _thumbnailSelection = new Border
+        {
+            BorderThickness = new Thickness(1), BorderBrush = _selectedBorder,
+            IsHitTestVisible = false, Opacity = 0
+        };
+        thumbnailContent.Children.Add(_thumbnailSelection);
+        _thumbnailHost = new Border
+        {
+            BorderThickness = new Thickness(1), Child = thumbnailContent,
+            BorderBrush = _normalBorder, Margin = new Thickness(3, 5, 4, 5)
+        };
         _thumbnailHost.PointerPressed += (_, e) => { _session.SelectLayer(LayerId); e.Handled = true; };
         SetColumn(_thumbnailHost, 1);
         Children.Add(_thumbnailHost);
         _label = new StudioButton("", () => _session.SelectLayer(LayerId))
         {
-            Height = 41,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Height = 41, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(5, 0, 2, 0)
+            BorderThickness = new Thickness(0), Padding = new Thickness(5, 0, 2, 0)
         };
         _label.DoubleTapped += (_, e) => { _session.SelectLayer(LayerId); rename(); e.Handled = true; };
         SetColumn(_label, 2);
@@ -78,12 +78,8 @@ internal sealed class LayerRow : Grid
 
     private void Edit(string name, Action<Layer> edit)
     {
-        if (_session.IsInTransaction || Current is not { } layer)
-            return;
-        try
-        {
-            _session.Execute(name, _ => edit(layer));
-        }
+        if (_session.IsInTransaction || Current is not { } layer) return;
+        try { _session.Execute(name, _ => edit(layer)); }
         catch (Exception error) { _error(error.Message); }
     }
 
@@ -100,31 +96,22 @@ internal sealed class LayerRow : Grid
             _linkIcon = new IconView("link");
             _link = new StudioButton("", () =>
             {
-                if (_session.IsInTransaction || Current is not { Locked: false } current)
-                    return;
+                if (_session.IsInTransaction || Current is not { Locked: false } current) return;
                 try
                 {
                     _session.SelectMask(LayerId);
                     _session.SetMaskLinked(!current.MaskLinked);
                 }
                 catch (Exception error) { _error(error.Message); }
-            })
-            {
-                Width = 24,
-                Height = 28,
-                Padding = new Thickness(3),
-                Content = _linkIcon
-            };
+            }) { Width = 24, Height = 28, Padding = new Thickness(3), Content = _linkIcon };
             _maskThumbnail = new LayerThumbnail { ShowMask = true, Width = 28, Height = 20 };
             _mask = new StudioButton("", () => _session.SelectMask(LayerId))
             {
-                Width = 34,
-                Height = 28,
-                Padding = new Thickness(2),
-                Content = _maskThumbnail
+                Width = 34, Height = 28, Padding = new Thickness(2), Content = _maskThumbnail
             };
             _suffix.Children.Insert(0, _link);
             _suffix.Children.Insert(1, _mask);
+            _maskSelected = null;
         }
         if (_mask is not null)
         {
@@ -140,17 +127,15 @@ internal sealed class LayerRow : Grid
 
     public void RefreshSelection(bool selected, bool editMask)
     {
+        if (_selected == selected && _maskSelected == editMask) return;
         if (_selected != selected)
         {
-            _selected = selected;
-            Background = _label.Background = Studio.Brush(selected ? "#484848" : "#303030");
-            _thumbnailHost.BorderBrush = Studio.Brush(selected ? "#b6b6b6" : "#171717");
+            Background = _label.Background = selected ? _selectedBackground : _normalBackground;
+            _thumbnailHost.BorderBrush = selected ? _selectedBorder : _normalBorder;
         }
-        if (_maskSelected != editMask || _thumbnailHost.BorderThickness.Left != (selected && !editMask ? 2 : 1))
-        {
-            _maskSelected = editMask;
-            _thumbnailHost.BorderThickness = new Thickness(selected && !editMask ? 2 : 1);
-        }
+        _selected = selected;
+        _maskSelected = editMask;
+        _thumbnailSelection.Opacity = selected && !editMask ? 1 : 0;
         _mask?.Selected(selected && editMask);
     }
 }

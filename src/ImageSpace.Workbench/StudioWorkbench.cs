@@ -17,19 +17,11 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     private readonly HistogramView _histogram = new(); private readonly ContentControl _bottomPanel = new(); private readonly StackPanel _history = new() { Spacing = 1 }; private readonly StackPanel _channels = new() { Spacing = 4 };
     private readonly DispatcherTimer _recoveryTimer = new() { Interval = TimeSpan.FromSeconds(8) }; private long _lastRecovered = -1; private Guid _lastRecoveredDocument; private bool _savingRecovery, _disposed, _dialogOpen, _busy;
     private string _bottomMode = "Layers"; private bool _panelsHidden; private PixelSurface? _clipboard; private StudioButton? _fgButton, _bgButton;
-    public EditorSession Session
-    {
-        get; private set;
-    }
-    public ImageViewport Surface
-    {
-        get;
-    }
+    private Rgba32? _shownForeground, _shownBackground;
+    public EditorSession Session { get; private set; }
+    public ImageViewport Surface { get; }
     public IReadOnlyList<EditorSession> Documents => _documents;
-    public Func<PixelSurface, FilterKind, float, float, Task<PixelSurface?>>? GpuFilter
-    {
-        get; set;
-    }
+    public Func<PixelSurface, FilterKind, float, float, Task<PixelSurface?>>? GpuFilter { get; set; }
     public string ComputeBackend { get; set; } = "CPU kernels / Skia compositor";
     public event Action? StateChanged;
     public StudioWorkbench(EditorSession session, IEditorStorage storage)
@@ -47,43 +39,19 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         VerticalContentAlignment = VerticalAlignment.Stretch;
         IsTabStop = true;
         Background = Studio.Brush("#292929");
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(28)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(39)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(1, GridUnitType.Star)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(24)
-        });
+        _root.RowDefinitions.Add(new() { Height = new(28) });
+        _root.RowDefinitions.Add(new() { Height = new(39) });
+        _root.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        _root.RowDefinitions.Add(new() { Height = new(24) });
         var menu = BuildMenuBar();
         _root.Children.Add(menu);
         var optionsHost = new ScrollViewer { Content = _options, HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Studio.Brush("#353535") };
         Grid.SetRow(optionsHost, 1);
         _root.Children.Add(optionsHost);
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(42)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(1, GridUnitType.Star)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(30)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(292)
-        });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(42) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(30) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(292) });
         var tools = BuildToolPalette();
         _workspace.Children.Add(tools);
         var documentArea = new Grid { RowDefinitions = { new() { Height = new(29) }, new() { Height = new(1, GridUnitType.Star) } } };
@@ -138,8 +106,7 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     }
     private void Refresh(EditorChange change = EditorChange.Document)
     {
-        if (_disposed)
-            return;
+        if (_disposed) return;
         var started = Stopwatch.GetTimestamp();
         UiRefreshes++;
         if (change == EditorChange.SavedState)
@@ -158,9 +125,10 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
                 _historyDirty = true;
                 if (_bottomMode == "History" && !_panelsHidden) RefreshHistory();
                 if (_bottomMode == "Channels" && !_panelsHidden) { RefreshChannels(); UpdateHistogram(_histogramChannel); }
+                RefreshStatus();
             }
-            RefreshStatus();
-            RefreshColors();
+            // Target selection cannot change document dimensions, zoom, or swatches.
+            // Tool options still follow the selected editing channel (content/mask).
             RefreshOptions();
         }
         LastUiRefreshMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -172,24 +140,19 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         }
         StateChanged?.Invoke();
     }
-    public void ShowStatus(string text)
-    {
-        _status.Text = text;
-    }
+    public void ShowStatus(string text) { if (_status.Text != text) _status.Text = text; }
     private void Run(Action action)
     {
-        if (_busy)
-            return;
-        try
-        {
-            action();
-        }
+        if (_busy) return;
+        try { action(); }
         catch (Exception ex) { ShowStatus(ex.Message); }
     }
     private void RefreshStatus()
     {
-        _zoom.Text = $"{Surface.Zoom * 100:0.#}%";
-        _metrics.Text = $"{Session.Document.Width} × {Session.Document.Height} px   ·   RGB/8   ·   {Session.Document.Layers.Count} layers";
+        var zoom = $"{Surface.Zoom * 100:0.#}%";
+        var metrics = $"{Session.Document.Width} × {Session.Document.Height} px   ·   RGB/8   ·   {Session.Document.Layers.Count} layers";
+        if (_zoom.Text != zoom) _zoom.Text = zoom;
+        if (_metrics.Text != metrics) _metrics.Text = metrics;
     }
     private sealed record DocumentTab(Border Host, StudioButton Title, StudioButton Close);
     private readonly Dictionary<EditorSession, DocumentTab> _documentTabs = [];
@@ -229,8 +192,7 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     }
     private void Switch(EditorSession session)
     {
-        if (Session == session)
-            return;
+        if (Session == session) return;
         Surface.CancelGesture();
         Session = session;
         _shownHistory.Clear(); _historyButtons.Clear(); _history.Children.Clear();
@@ -243,19 +205,16 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     }
     public void AddDocument(ImageDocument document, bool markDirty = false)
     {
-        if (_documents.Count >= 12)
-            throw new InvalidOperationException("Close a document before opening more than 12 tabs.");
+        if (_documents.Count >= 12) throw new InvalidOperationException("Close a document before opening more than 12 tabs.");
         var session = new EditorSession(document);
         session.Changed += SessionChanged;
         _documents.Add(session);
         Switch(session);
-        if (markDirty)
-            session.Execute("New document", _ => { });
+        if (markDirty) session.Execute("New document", _ => { });
     }
     private async Task CloseAsync(EditorSession session)
     {
-        if (session.IsDirty && !await ConfirmAsync("Close without saving?", $"Unsaved changes to {session.Document.Name} will be lost.", "Discard changes"))
-            return;
+        if (session.IsDirty && !await ConfirmAsync("Close without saving?", $"Unsaved changes to {session.Document.Name} will be lost.", "Discard changes")) return;
         if (_documents.Count == 1)
         {
             var d = new ImageDocument(1000, 680, "Untitled");
@@ -266,15 +225,13 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         }
         session.Changed -= SessionChanged;
         _documents.Remove(session);
-        if (Session == session)
-            Switch(_documents[^1]);
+        if (Session == session) Switch(_documents[^1]);
         RefreshTabs();
     }
     public void SelectTool(EditorTool tool)
     {
         Surface.Tool = tool;
-        foreach (var (k, b) in _toolButtons)
-            b.Selected(k == tool);
+        foreach (var (k, b) in _toolButtons) b.Selected(k == tool);
         RefreshOptions();
         ShowStatus(ToolHelp(tool));
         StateChanged?.Invoke();
@@ -282,21 +239,26 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     private static string ToolHelp(EditorTool t) => t switch { EditorTool.Clone => "Alt-click to set a clone source, then paint.", EditorTool.Crop => "Drag a crop rectangle. Enter applies; Escape cancels.", EditorTool.Marquee or EditorTool.EllipseSelect or EditorTool.Lasso or EditorTool.Wand => "Shift adds · Alt subtracts · Shift+Alt intersects", EditorTool.Move => "Drag to move. Handles resize; top handle rotates. Shift constrains.", EditorTool.Text => "Click to add text. Double-click a text layer to edit.", EditorTool.Brush or EditorTool.Eraser => "Paint on an unlocked pixel layer. [ and ] change brush size.", _ => t.ToString() };
     private void RefreshColors()
     {
-        if (_colorHex.Text == Surface.Foreground.Hex) return;
-        _colorHex.Text = Surface.Foreground.Hex;
-        if (_fgButton is not null)
-            _fgButton.Background = Studio.Brush(Surface.Foreground.Hex);
-        if (_bgButton is not null)
-            _bgButton.Background = Studio.Brush(Surface.BackgroundColor.Hex);
+        var foreground = Surface.Foreground;
+        var background = Surface.BackgroundColor;
+        if (_shownForeground != foreground && _fgButton is not null)
+        {
+            _colorHex.Text = foreground.Hex;
+            _fgButton.Background = Studio.Brush(foreground.Hex);
+            _shownForeground = foreground;
+        }
+        if (_shownBackground != background && _bgButton is not null)
+        {
+            _bgButton.Background = Studio.Brush(background.Hex);
+            _shownBackground = background;
+        }
     }
     public new void Dispose()
     {
-        if (_disposed)
-            return;
+        if (_disposed) return;
         _disposed = true;
         _recoveryTimer.Stop();
-        foreach (var s in _documents)
-            s.Changed -= SessionChanged;
+        foreach (var s in _documents) s.Changed -= SessionChanged;
         _properties.Dispose();
         _histogramTimer?.Stop();
         _channelPreview.Dispose();

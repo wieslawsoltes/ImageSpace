@@ -3,12 +3,22 @@ namespace ImageSpace.Workbench;
 public sealed partial class StudioWorkbench
 {
     private sealed record ToolOptions(StackPanel Panel, List<Action> Update);
+    private readonly record struct OptionsState(EditorTool Tool, bool Mask, bool Transform, Rgba32 Foreground,
+        float Size, float Hardness, float Opacity, float Flow, bool Pressure, int Tolerance);
     private readonly Dictionary<EditorTool, ToolOptions> _toolOptions = [];
     private ToolOptions? _visibleOptions;
+    private OptionsState? _shownOptions;
     public long OptionsBuilds { get; private set; }
 
     private void RefreshOptions()
     {
+        // Swatches are independent of document selection. Refresh their two cached
+        // values separately, including first construction and background-only edits.
+        RefreshColors();
+        var brush = Surface.Brush;
+        var state = new OptionsState(Surface.Tool, Session.Document.EditMask, Surface.ShowTransform,
+            Surface.Foreground, brush.Size, brush.Hardness, brush.Opacity, brush.Flow, brush.Pressure, Surface.Tolerance);
+        if (_shownOptions == state) return;
         if (!_toolOptions.TryGetValue(Surface.Tool, out var options))
         {
             options = BuildOptions(Surface.Tool);
@@ -22,6 +32,7 @@ public sealed partial class StudioWorkbench
             _visibleOptions = options;
         }
         foreach (var update in options.Update) update();
+        _shownOptions = state;
     }
 
     private ToolOptions BuildOptions(EditorTool tool)

@@ -1,4 +1,5 @@
 using ImageSpace.Skia;
+using Microsoft.UI.Xaml.Automation;
 
 namespace ImageSpace.Workbench;
 
@@ -56,19 +57,14 @@ public sealed class LayerPanel : UserControl
         grid.Children.Add(_settings);
         _scroll = new ScrollViewer
         {
-            Content = _rows,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
-        // Wait for actual row and viewport arrangement before scrolling. Merely changing
-        // selection cannot reveal the row using the previous inspector's viewport height.
+        AutomationProperties.SetName(_scroll, "Layer list");
         _scroll.LayoutUpdated += (_, _) => RevealSelection();
         _scroll.SizeChanged += (_, _) =>
         {
-            // A larger mask/tone inspector can shrink the viewport without changing
-            // ActiveLayerId. Keep the editing target visible after the new arrangement.
-            if (_followActiveSelection)
-                _revealSelection = true;
+            if (_followActiveSelection) _revealSelection = true;
         };
         Grid.SetRow(_scroll, 1);
         grid.Children.Add(_scroll);
@@ -96,8 +92,6 @@ public sealed class LayerPanel : UserControl
             _items.Clear();
             _rows.Children.Clear();
             _lastActive = session.Document.ActiveLayerId;
-            // Preserve the initial sample's top-of-stack presentation; switching to
-            // an opened document must reveal its saved active layer.
             _followActiveSelection = _session is not null;
             _revealSelection = _followActiveSelection;
         }
@@ -108,45 +102,28 @@ public sealed class LayerPanel : UserControl
 
     private void Run(Action<EditorSession> action)
     {
-        if (_session is null || _session.IsInTransaction)
-            return;
-        try
-        {
-            action(_session);
-        }
+        if (_session is null || _session.IsInTransaction) return;
+        try { action(_session); }
         catch (Exception error) { Error?.Invoke(error.Message); }
     }
 
     private void RevealSelection()
     {
-        if (!_revealSelection || _session is null || _scroll.ViewportHeight <= 0)
-            return;
+        if (!_revealSelection || _session is null || _scroll.ViewportHeight <= 0) return;
         var index = _session.Document.Layers.FindIndex(layer => layer.Id == _session.Document.ActiveLayerId);
-        if (index < 0)
-        {
-            _revealSelection = false;
-            return;
-        }
+        if (index < 0) { _revealSelection = false; return; }
         var rowIndex = _session.Document.Layers.Count - index - 1;
-        if (rowIndex >= _rows.Children.Count || _rows.Children[rowIndex] is not FrameworkElement { ActualHeight: > 0 })
-            return;
-        // Clearing/rebuilding the rows can temporarily reset the extent and offset.
-        // Do not consume the request against that intermediate layout.
+        if (rowIndex >= _rows.Children.Count || _rows.Children[rowIndex] is not FrameworkElement { ActualHeight: > 0 }) return;
         var expectedExtent = _rows.Children.Count * 44.0 - 1;
-        if (_scroll.ExtentHeight + .5 < expectedExtent)
-            return;
+        if (_scroll.ExtentHeight + .5 < expectedExtent) return;
         var top = rowIndex * 44.0;
         var bottom = top + 43;
         var offset = _scroll.VerticalOffset;
-        if (top < offset)
-            offset = top;
-        else if (bottom > offset + _scroll.ViewportHeight)
-            offset = bottom - _scroll.ViewportHeight;
+        if (top < offset) offset = top;
+        else if (bottom > offset + _scroll.ViewportHeight) offset = bottom - _scroll.ViewportHeight;
         offset = Math.Clamp(offset, 0, Math.Max(0, _scroll.ScrollableHeight));
         if (Math.Abs(offset - _scroll.VerticalOffset) > .5)
         {
-            // ChangeView may schedule its offset update. Verify the resulting offset
-            // on the next layout instead of marking an unpresented request complete.
             _scroll.ChangeView(null, offset, null, true);
             return;
         }
@@ -172,9 +149,15 @@ public sealed class LayerPanel : UserControl
             _addMask.IsEnabled = active is { Locked: false, Mask: null };
             _deleteLayer.IsEnabled = active is { Locked: false };
             _blend.IsEnabled = active is { Locked: false } && active.Kind != LayerKind.Adjustment;
-            _blend.SetLabel((active?.Blend.ToString() ?? "Normal") + "        ⌄");
-            // Retain the original automation name used by the blend menu tests.
-            _blend.SetName(active?.Blend.ToString() ?? "Normal");
+            var blendName = active?.Blend.ToString() ?? "Normal";
+            var blendLabel = blendName + "        ⌄";
+            // Do not oscillate automation/tooltip names between the decorated label
+            // and semantic mode on every selection when the mode has not changed.
+            if (_blend.Content is not TextBlock text || text.Text != blendLabel)
+            {
+                _blend.SetLabel(blendLabel);
+                _blend.SetName(blendName);
+            }
             _opacity.IsEnabled = active is { Locked: false };
             _opacity.Value = (active?.Opacity ?? 1) * 100;
             if (previous != _lastActive) _opacity.ResetPendingEdit();
