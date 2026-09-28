@@ -32,6 +32,7 @@ jobs:
           dotnet run --project tests/ImageSpace.MaskTests -c Release
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
           dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
+          dotnet run --project tests/ImageSpace.LayerTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
@@ -63,6 +64,16 @@ jobs:
             artifacts/packages
             artifacts/ImageSpace-source.zip
             artifacts/ImageSpace-browser.zip
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-release-validation
+          path: |
+            artifacts/*tests.json
+            artifacts/*performance-results.json
+            artifacts/browser-results.json
+            artifacts/webgpu-results.json
+          if-no-files-found: warn
   native:
     strategy:
       fail-fast: false

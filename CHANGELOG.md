@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1-alpha.1 — 2026-09-28
+
+- Added **Layer → Apply layer mask** for enabled raster masks, including density, feather and linked/unlinked affine placement, sampled at authored pixel resolution.
+- Preserved source RGB, full authored extent, off-canvas content, layer geometry, opacity, blend mode and selection; one undoable transaction restores the editable mask and original pixels.
+- Added renderer-independent mask-application contracts with detached callback input, independent output ownership, and pre-transaction validation of stale, failed, null and wrong-size results.
+- Avoided per-layer offscreen surfaces for Normal/unit-opacity layers without effective masks while retaining document isolation and the original paths for mask/blend/group-opacity semantics.
+- Removed unused raster shape paints and allocated draw stopwatches; added direct/isolated counters and an always-isolated differential reference switch.
+- Added a dedicated layer regression suite, same-process raster CPU benchmark, two real-browser mask-application scenarios, in-app guidance and a technical guide. CI results, not this changelog, establish validation status for a given commit.
+- Affine/feathered masks are sampled once when baked; scaled or rotated previews can differ at subpixel edges from live filtering. Adjustment masks and non-raster layers are not silently flattened.
+
 ## 0.3.0-alpha.1 — 2026-09-28
 
 - Linked/unlinked affine layer-mask placement, pointer and numeric transformations, relink-without-jump and transactional keyboard nudging.
@@ -8,7 +18,6 @@
 - Two-stage mask source/placement filter caching avoids rerecording authored mask content during movement/density changes.
 - Exact streaming selection contours use O(width) pooled scratch and merged collinear edges instead of an image-sized temporary.
 - Expanded geometry, archive, compositor, topology and real-browser regression coverage; interaction CPU benchmarks.
-
 
 ## 0.2.0-alpha.1 — 2026-09-28
 
@@ -19,7 +28,6 @@
 - Optimized tile fills/imports, row operations, resizing, crop, flip, histogram, native Skia transfers and streamed archives.
 - Added independent PSD/geometry/storage regressions, browser compatibility tests and reproducible CPU A/B benchmarks.
 - Full Photoshop parity remains explicitly out of scope for this release; see the feature matrix.
-
 
 ## 0.1.0-alpha.1 — development, 2026-09-27
 
