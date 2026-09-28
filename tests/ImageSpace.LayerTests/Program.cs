@@ -317,6 +317,132 @@ Test("committed output has independent copy-on-write ownership", () =>
     Check(session.Document.ActiveLayer!.Pixels!.Get(2, 3) == new Rgba32(17, 31, 47, 73));
 });
 
+Test("selection notifications do not dirty pixels, history or recovery content", () =>
+{
+    var session = MaskedSession();
+    session.Document.EditMask = false;
+    var content = session.ContentRevision;
+    var events = new List<EditorChange>();
+    session.Changed += (_, e) => events.Add(((EditorChangedEventArgs)e).Change);
+    var first = session.Document.Layers[0];
+    var second = session.Document.Layers[1];
+    session.SelectLayer(first.Id);
+    session.SelectLayer(second.Id);
+    session.SelectMask(second.Id);
+    Check(events.Count == 3 && events.All(change => change == EditorChange.ActiveTarget));
+    Check(session.ContentRevision == content && !session.IsDirty && session.History.Count == 0);
+    var revision = session.Revision;
+    session.SelectMask(second.Id);
+    Check(session.Revision == revision, "Selecting the current mask was not a no-op.");
+    session.SelectLayer(second.Id);
+    revision = session.Revision;
+    session.SelectLayer(second.Id);
+    session.SelectLayer(Guid.NewGuid());
+    Check(session.Revision == revision, "Selecting the current or missing layer emitted changes.");
+});
+
+Test("commit undo redo and explicit Notify retain conservative invalidation", () =>
+{
+    var session = MaskedSession();
+    var content = session.ContentRevision;
+    session.Execute("Move", d => d.ActiveLayer!.X++);
+    session.Undo(); session.Redo(); session.Notify();
+    Check(session.ContentRevision == content + 4);
+    EditorChange? last = null;
+    session.Changed += (_, e) => last = ((EditorChangedEventArgs)e).Change;
+    session.MarkSaved();
+    Check(last == EditorChange.SavedState && session.ContentRevision == content + 4);
+    var revision = session.Revision;
+    session.MarkSaved(); Check(revision == session.Revision);
+});
+
+Test("render stamp ignores focus metadata but captures in-place pixel and mask edits", () =>
+{
+    var layer = Raster(); layer.Mask = Mask(33, 25);
+    var stamp = LayerRenderStamp.Capture(layer);
+    layer.Name = "Renamed"; layer.Locked = true;
+    Check(stamp == LayerRenderStamp.Capture(layer));
+    layer.Pixels!.Set(2, 3, Rgba32.White);
+    Check(stamp != LayerRenderStamp.Capture(layer));
+    stamp = LayerRenderStamp.Capture(layer);
+    layer.Mask.Set(2, 3, Rgba32.White);
+    Check(stamp != LayerRenderStamp.Capture(layer));
+});
+
+foreach (var property in new[] { "transform", "mask", "opacity", "color", "text", "tone" })
+{
+    var change = property;
+    Test($"preview invalidates rendering dependency: {change}", () =>
+    {
+        var layer = Raster();
+        var document = Scene(layer);
+        using var renderer = new ImageRenderer();
+        using var cache = new DocumentPreviewCache();
+        cache.Get(document, document.Layers.Count, 32, renderer);
+        switch (change)
+        {
+            case "transform": layer.Rotation = 30; break;
+            case "mask": layer.Mask = Mask(33, 25); break;
+            case "opacity": layer.Opacity = .2f; break;
+            case "color": layer.Color = Rgba32.Black; break;
+            case "text": layer.Text = "Changed"; break;
+            case "tone": layer.Amount = 30; break;
+        }
+        cache.Get(document, document.Layers.Count, 32, renderer);
+        Check(cache.Builds == 2);
+    });
+}
+
+Test("cached input histogram ignores its adjustment, layers above, selection and channel focus", () =>
+{
+    var document = Scene(Raster());
+    var tone = new Layer { Kind = LayerKind.Adjustment, Adjustment = AdjustmentKind.Curves };
+    document.Layers.Add(tone);
+    document.Layers.Add(Raster());
+    using var renderer = new ImageRenderer();
+    using var cache = new DocumentPreviewCache();
+    var pixels = cache.Get(document, 2, 32, renderer);
+    var uploads = renderer.TileUploads;
+    tone.Amount = 15; document.Layers[^1].X = 10;
+    document.ActiveLayerId = tone.Id; document.EditMask = true;
+    document.Selection = new PixelSurface(document.Width, document.Height);
+    Check(ReferenceEquals(pixels, cache.Get(document, 2, 32, renderer)) && cache.Builds == 1);
+    Check(renderer.TileUploads == uploads && renderer.DocumentDraws == 0, "Preview polluted viewport rendering caches.");
+    document.Layers[0].Pixels!.Set(1, 1, Rgba32.White);
+    cache.Get(document, 2, 32, renderer);
+    Check(cache.Builds == 2);
+    cache.Clear(); cache.Get(document, 2, 32, renderer);
+    Check(cache.Builds == 3);
+});
+
+Test("preview size, document identity, prefix length and typeface invalidate cache", () =>
+{
+    var document = Scene(Raster());
+    using var renderer = new ImageRenderer();
+    using var cache = new DocumentPreviewCache();
+    Check(cache.Get(document, 2, 16, renderer).Width == 16);
+    cache.Get(document, 2, 32, renderer);
+    cache.Get(document, 1, 32, renderer);
+    document.Id = Guid.NewGuid(); cache.Get(document, 1, 32, renderer);
+    renderer.SetTypeface(SKTypeface.FromFamilyName("sans-serif"));
+    cache.Get(document, 1, 32, renderer);
+    Check(cache.Builds == 5);
+    Throws(() => cache.Get(document, 3, 32, renderer));
+    Throws(() => cache.Get(document, 2, 513, renderer));
+});
+
+Test("thumbnail rendering does not copy tile ownership or mutate geometry", () =>
+{
+    var layer = Raster(); layer.X = 700; layer.Rotation = 25;
+    var tile = layer.Pixels!.EnumerateTiles().First().Identity;
+    using var surface = SKSurface.Create(new SKImageInfo(64, 48));
+    using var renderer = new ImageRenderer();
+    renderer.DrawLayer(surface.Canvas, layer, true, true, ignoreTransform: true);
+    layer.Pixels.Set(2, 3, Rgba32.White);
+    Check(ReferenceEquals(tile, layer.Pixels.EnumerateTiles().First().Identity), "Thumbnail forced a copy-on-write clone.");
+    Check(layer.X == 700 && layer.Rotation == 25);
+});
+
 var results = new List<object>();
 var failures = 0;
 foreach (var (name, body) in tests)

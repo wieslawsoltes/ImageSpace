@@ -6,6 +6,8 @@ namespace ImageSpace.Workbench;
 public sealed partial class MaskPropertiesEditor
 {
     private readonly StackPanel _placementFields = new() { Spacing = 5 };
+    private readonly IconView _placementLinkIcon = new("link");
+    private readonly TextBlock _placementLinkText = Studio.Label("Linked", 11);
     private StudioButton _link = null!;
     private StudioButton _align = null!;
     private NumericField _x = null!, _y = null!, _width = null!, _height = null!, _angle = null!;
@@ -17,6 +19,7 @@ public sealed partial class MaskPropertiesEditor
             if (Current is { } layer)
                 _session.SetMaskLinked(!layer.MaskLinked);
         }));
+        _link.Content = Studio.Row(_placementLinkIcon, _placementLinkText);
         _align = new StudioButton("Align mask to layer", () => Change(_session.AlignMaskToLayer));
         body.Children.Add(Studio.Row(_link, _align));
         _x = new NumericField("Mask X", 0, -1_000_000, 1_000_000, 125);
@@ -57,8 +60,8 @@ public sealed partial class MaskPropertiesEditor
     {
         _link.IsEnabled = _align.IsEnabled = editable;
         _placementFields.Visibility = layer.MaskLinked ? Visibility.Collapsed : Visibility.Visible;
-        _link.Content = Studio.Row(new IconView(layer.MaskLinked ? "link" : "unlink"),
-            Studio.Label(layer.MaskLinked ? "Linked" : "Unlinked", 11));
+        _placementLinkIcon.Icon = layer.MaskLinked ? "link" : "unlink";
+        _placementLinkText.Text = layer.MaskLinked ? "Linked" : "Unlinked";
         ToolTipService.SetToolTip(_link, layer.MaskLinked
             ? "Unlink to transform layer and mask independently." : "Relink without moving the mask.");
         _x.IsEnabled = _y.IsEnabled = _width.IsEnabled = _height.IsEnabled = _angle.IsEnabled = editable && !layer.MaskLinked;

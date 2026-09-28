@@ -120,7 +120,8 @@ public sealed partial class StudioWorkbench
         if (_savingRecovery || _busy || Session.IsInTransaction || _disposed)
             return;
         var session = Session;
-        var revision = session.Revision;
+        if (session.ContentRevision == 0 || !session.IsDirty) return;
+        var revision = session.ContentRevision;
         if (_lastRecovered == revision && _lastRecoveredDocument == session.Document.Id)
             return;
         _savingRecovery = true;
@@ -142,7 +143,7 @@ public sealed partial class StudioWorkbench
         try
         {
             await _storage.ClearRecoveryAsync();
-            _lastRecovered = Session.Revision;
+            _lastRecovered = Session.ContentRevision;
             _lastRecoveredDocument = Session.Document.Id;
             ShowStatus("Local recovery copy cleared.");
         }

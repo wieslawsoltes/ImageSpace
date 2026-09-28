@@ -1,1 +1,16 @@
-{"name":"imagespace-browser-tests","private":true,"type":"module","scripts":{"test:browser":"playwright test","pack:webgpu":"node scripts/build-webgpu-package.mjs && npm pack ./packages/webgpu --pack-destination artifacts/packages"},"devDependencies":{"@playwright/test":"1.63.0"},"engines":{"node":">=22"}}
+{
+  "name": "imagespace-browser-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:browser-helpers": "node --test tests/tooling/*.test.mjs",
+    "test:browser": "npm run test:browser-helpers && playwright test",
+    "pack:webgpu": "node scripts/build-webgpu-package.mjs && npm pack ./packages/webgpu --pack-destination artifacts/packages"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

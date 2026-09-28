@@ -34,8 +34,12 @@ public sealed class AdaptivePanelGrid : Grid
         var factor = Math.Clamp(budget / Math.Max(1, PreferredTopHeight + PreferredMiddleHeight), 0, 1);
         var top = Math.Floor(PreferredTopHeight * factor);
         var middle = Math.Floor(PreferredMiddleHeight * factor);
-        RowDefinitions[0].Height = new GridLength(top);
-        RowDefinitions[1].Height = new GridLength(middle);
-        TopHeightChanged?.Invoke(top);
+        if (RowDefinitions[0].Height.Value != top)
+        {
+            RowDefinitions[0].Height = new GridLength(top);
+            TopHeightChanged?.Invoke(top);
+        }
+        if (RowDefinitions[1].Height.Value != middle)
+            RowDefinitions[1].Height = new GridLength(middle);
     }
 }

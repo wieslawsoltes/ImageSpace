@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using ImageSpace.Storage;
 using ImageSpace.Documents;
 using ImageSpace.Skia;
@@ -16,19 +17,11 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     private readonly HistogramView _histogram = new(); private readonly ContentControl _bottomPanel = new(); private readonly StackPanel _history = new() { Spacing = 1 }; private readonly StackPanel _channels = new() { Spacing = 4 };
     private readonly DispatcherTimer _recoveryTimer = new() { Interval = TimeSpan.FromSeconds(8) }; private long _lastRecovered = -1; private Guid _lastRecoveredDocument; private bool _savingRecovery, _disposed, _dialogOpen, _busy;
     private string _bottomMode = "Layers"; private bool _panelsHidden; private PixelSurface? _clipboard; private StudioButton? _fgButton, _bgButton;
-    public EditorSession Session
-    {
-        get; private set;
-    }
-    public ImageViewport Surface
-    {
-        get;
-    }
+    private Rgba32? _shownForeground, _shownBackground;
+    public EditorSession Session { get; private set; }
+    public ImageViewport Surface { get; }
     public IReadOnlyList<EditorSession> Documents => _documents;
-    public Func<PixelSurface, FilterKind, float, float, Task<PixelSurface?>>? GpuFilter
-    {
-        get; set;
-    }
+    public Func<PixelSurface, FilterKind, float, float, Task<PixelSurface?>>? GpuFilter { get; set; }
     public string ComputeBackend { get; set; } = "CPU kernels / Skia compositor";
     public event Action? StateChanged;
     public StudioWorkbench(EditorSession session, IEditorStorage storage)
@@ -46,43 +39,19 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         VerticalContentAlignment = VerticalAlignment.Stretch;
         IsTabStop = true;
         Background = Studio.Brush("#292929");
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(28)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(39)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(1, GridUnitType.Star)
-        });
-        _root.RowDefinitions.Add(new()
-        {
-            Height = new(24)
-        });
+        _root.RowDefinitions.Add(new() { Height = new(28) });
+        _root.RowDefinitions.Add(new() { Height = new(39) });
+        _root.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        _root.RowDefinitions.Add(new() { Height = new(24) });
         var menu = BuildMenuBar();
         _root.Children.Add(menu);
         var optionsHost = new ScrollViewer { Content = _options, HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Studio.Brush("#353535") };
         Grid.SetRow(optionsHost, 1);
         _root.Children.Add(optionsHost);
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(42)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(1, GridUnitType.Star)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(30)
-        });
-        _workspace.ColumnDefinitions.Add(new()
-        {
-            Width = new(292)
-        });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(42) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(30) });
+        _workspace.ColumnDefinitions.Add(new() { Width = new(292) });
         var tools = BuildToolPalette();
         _workspace.Children.Add(tools);
         var documentArea = new Grid { RowDefinitions = { new() { Height = new(29) }, new() { Height = new(1, GridUnitType.Star) } } };
@@ -123,62 +92,119 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         SizeChanged += (_, _) => { var compact = ActualWidth < 800; _workspace.ColumnDefinitions[3].Width = new GridLength(_panelsHidden ? 0 : compact ? 252 : 292); _workspace.ColumnDefinitions[2].Width = new GridLength(_panelsHidden || compact ? 0 : 30); };
         Refresh();
     }
+    private int _historyTravel;
+    public long UiRefreshes { get; private set; }
+    public long SelectionRefreshes { get; private set; }
+    public double LastUiRefreshMilliseconds { get; private set; }
+    public double LastSelectionRefreshMilliseconds { get; private set; }
+    public double MaxSelectionRefreshMilliseconds { get; private set; }
     private void SessionChanged(object? sender, EventArgs e)
     {
-        Refresh();
+        if (_historyTravel > 0) return;
+        if (!ReferenceEquals(sender, Session)) { RefreshTabs(); return; }
+        Refresh(e is EditorChangedEventArgs change ? change.Change : EditorChange.Document);
     }
-    private void Refresh()
+    private void Refresh(EditorChange change = EditorChange.Document)
     {
-        if (_disposed)
-            return;
-        RefreshTabs();
-        _layers.Bind(Session, Surface.Renderer);
-        _properties.Bind(Session);
-        RefreshHistory();
-        RefreshChannels();
-        RefreshStatus();
-        RefreshColors();
-        RefreshOptions();
+        if (_disposed) return;
+        var started = Stopwatch.GetTimestamp();
+        UiRefreshes++;
+        if (change == EditorChange.SavedState)
+        {
+            RefreshTabs();
+        }
+        else
+        {
+            // Primary selection UI is synchronous and contains no preview rendering.
+            _properties.Bind(Session);
+            if (change == EditorChange.ActiveTarget) _layers.RefreshSelection();
+            else
+            {
+                RefreshTabs();
+                _layers.Bind(Session, Surface.Renderer);
+                _historyDirty = true;
+                if (_bottomMode == "History" && !_panelsHidden) RefreshHistory();
+                if (_bottomMode == "Channels" && !_panelsHidden) { RefreshChannels(); UpdateHistogram(_histogramChannel); }
+                RefreshStatus();
+            }
+            // Target selection cannot change document dimensions, zoom, or swatches.
+            // Tool options still follow the selected editing channel (content/mask).
+            RefreshOptions();
+        }
+        LastUiRefreshMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (change == EditorChange.ActiveTarget)
+        {
+            SelectionRefreshes++;
+            LastSelectionRefreshMilliseconds = LastUiRefreshMilliseconds;
+            MaxSelectionRefreshMilliseconds = Math.Max(MaxSelectionRefreshMilliseconds, LastUiRefreshMilliseconds);
+        }
         StateChanged?.Invoke();
     }
-    public void ShowStatus(string text)
-    {
-        _status.Text = text;
-    }
+    public void ShowStatus(string text) { if (_status.Text != text) _status.Text = text; }
     private void Run(Action action)
     {
-        if (_busy)
-            return;
-        try
-        {
-            action();
-        }
+        if (_busy) return;
+        try { action(); }
         catch (Exception ex) { ShowStatus(ex.Message); }
     }
     private void RefreshStatus()
     {
-        _zoom.Text = $"{Surface.Zoom * 100:0.#}%";
-        _metrics.Text = $"{Session.Document.Width} × {Session.Document.Height} px   ·   RGB/8   ·   {Session.Document.Layers.Count} layers";
+        var zoom = $"{Surface.Zoom * 100:0.#}%";
+        var metrics = $"{Session.Document.Width} × {Session.Document.Height} px   ·   RGB/8   ·   {Session.Document.Layers.Count} layers";
+        if (_zoom.Text != zoom)
+        {
+            _zoom.Text = zoom;
+            // View changes do not refresh the document or rebuild its tabs. Keep
+            // the active retained caption in sync after Fit, resize and wheel zoom.
+            if (_documentTabs.TryGetValue(Session, out var tab))
+                tab.Title.SetLabel(Session.Document.Name + (Session.IsDirty ? " *" : "") + "  @ " + zoom);
+        }
+        if (_metrics.Text != metrics) _metrics.Text = metrics;
     }
+    private sealed record DocumentTab(Border Host, StudioButton Title, StudioButton Close);
+    private readonly Dictionary<EditorSession, DocumentTab> _documentTabs = [];
+    private StudioButton? _newDocument;
+    public long TabsCreated { get; private set; }
     private void RefreshTabs()
     {
-        _tabs.Children.Clear();
-        foreach (var session in _documents)
+        for (var index = 0; index < _documents.Count; index++)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-            var title = new StudioButton(session.Document.Name + (session.IsDirty ? " *" : "") + "  @ " + (session == Session ? $"{Surface.Zoom * 100:0.#}%" : "RGB/8"), () => Switch(session)) { Height = 28, MaxWidth = 260, Padding = new Thickness(13, 0, 8, 0), CornerRadius = new CornerRadius(0), Background = Studio.Brush(session == Session ? "#3c3c3c" : "#292929"), BorderThickness = new Thickness(0) };
-            row.Children.Add(title);
-            row.Children.Add(new StudioButton("Close " + session.Document.Name, () => _ = CloseAsync(session), "close") { Height = 28, Width = 23, Padding = new Thickness(4), CornerRadius = new CornerRadius(0) });
-            _tabs.Children.Add(Studio.Box(row, session == Session ? "#3c3c3c" : "#292929"));
+            var session = _documents[index];
+            if (!_documentTabs.TryGetValue(session, out var tab))
+            {
+                var title = new StudioButton("", () => Switch(session)) { Height = 28, MaxWidth = 260, Padding = new Thickness(13, 0, 8, 0), CornerRadius = new CornerRadius(0), BorderThickness = new Thickness(0) };
+                var close = new StudioButton("", () => _ = CloseAsync(session), "close") { Height = 28, Width = 23, Padding = new Thickness(4), CornerRadius = new CornerRadius(0) };
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+                row.Children.Add(title); row.Children.Add(close);
+                tab = new DocumentTab(Studio.Box(row), title, close);
+                _documentTabs.Add(session, tab);
+                TabsCreated++;
+            }
+            tab.Title.SetLabel(session.Document.Name + (session.IsDirty ? " *" : "") + "  @ " + (session == Session ? $"{Surface.Zoom * 100:0.#}%" : "RGB/8"));
+            tab.Title.Selected(session == Session);
+            tab.Close.SetName("Close " + session.Document.Name);
+            if (index >= _tabs.Children.Count || !ReferenceEquals(_tabs.Children[index], tab.Host))
+            {
+                _tabs.Children.Remove(tab.Host);
+                _tabs.Children.Insert(index, tab.Host);
+            }
         }
-        _tabs.Children.Add(new StudioButton("New document", () => _ = NewAsync(), "plus") { Height = 28, Width = 28, Padding = new Thickness(6) });
+        foreach (var session in _documentTabs.Keys.Where(session => !_documents.Contains(session)).ToArray())
+        {
+            _tabs.Children.Remove(_documentTabs[session].Host);
+            _documentTabs.Remove(session);
+        }
+        _newDocument ??= new StudioButton("New document", () => _ = NewAsync(), "plus") { Height = 28, Width = 28, Padding = new Thickness(6) };
+        if (!_tabs.Children.Contains(_newDocument)) _tabs.Children.Add(_newDocument);
     }
     private void Switch(EditorSession session)
     {
-        if (Session == session)
-            return;
+        if (Session == session) return;
         Surface.CancelGesture();
         Session = session;
+        _shownHistory.Clear(); _historyButtons.Clear(); _history.Children.Clear();
+        _historySession = null; _historyHeader = null; _historyDirty = true;
+        _histogramTimer?.Stop(); _channelPreview.Clear();
         Surface.Session = session;
         _lastRecovered = -1;
         Refresh();
@@ -186,19 +212,16 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     }
     public void AddDocument(ImageDocument document, bool markDirty = false)
     {
-        if (_documents.Count >= 12)
-            throw new InvalidOperationException("Close a document before opening more than 12 tabs.");
+        if (_documents.Count >= 12) throw new InvalidOperationException("Close a document before opening more than 12 tabs.");
         var session = new EditorSession(document);
         session.Changed += SessionChanged;
         _documents.Add(session);
         Switch(session);
-        if (markDirty)
-            session.Execute("New document", _ => { });
+        if (markDirty) session.Execute("New document", _ => { });
     }
     private async Task CloseAsync(EditorSession session)
     {
-        if (session.IsDirty && !await ConfirmAsync("Close without saving?", $"Unsaved changes to {session.Document.Name} will be lost.", "Discard changes"))
-            return;
+        if (session.IsDirty && !await ConfirmAsync("Close without saving?", $"Unsaved changes to {session.Document.Name} will be lost.", "Discard changes")) return;
         if (_documents.Count == 1)
         {
             var d = new ImageDocument(1000, 680, "Untitled");
@@ -209,15 +232,13 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         }
         session.Changed -= SessionChanged;
         _documents.Remove(session);
-        if (Session == session)
-            Switch(_documents[^1]);
+        if (Session == session) Switch(_documents[^1]);
         RefreshTabs();
     }
     public void SelectTool(EditorTool tool)
     {
         Surface.Tool = tool;
-        foreach (var (k, b) in _toolButtons)
-            b.Selected(k == tool);
+        foreach (var (k, b) in _toolButtons) b.Selected(k == tool);
         RefreshOptions();
         ShowStatus(ToolHelp(tool));
         StateChanged?.Invoke();
@@ -225,20 +246,30 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
     private static string ToolHelp(EditorTool t) => t switch { EditorTool.Clone => "Alt-click to set a clone source, then paint.", EditorTool.Crop => "Drag a crop rectangle. Enter applies; Escape cancels.", EditorTool.Marquee or EditorTool.EllipseSelect or EditorTool.Lasso or EditorTool.Wand => "Shift adds · Alt subtracts · Shift+Alt intersects", EditorTool.Move => "Drag to move. Handles resize; top handle rotates. Shift constrains.", EditorTool.Text => "Click to add text. Double-click a text layer to edit.", EditorTool.Brush or EditorTool.Eraser => "Paint on an unlocked pixel layer. [ and ] change brush size.", _ => t.ToString() };
     private void RefreshColors()
     {
-        _colorHex.Text = Surface.Foreground.Hex;
-        if (_fgButton is not null)
-            _fgButton.Background = Studio.Brush(Surface.Foreground.Hex);
-        if (_bgButton is not null)
-            _bgButton.Background = Studio.Brush(Surface.BackgroundColor.Hex);
+        var foreground = Surface.Foreground;
+        var background = Surface.BackgroundColor;
+        if (_shownForeground != foreground && _fgButton is not null)
+        {
+            _colorHex.Text = foreground.Hex;
+            _fgButton.Background = Studio.Brush(foreground.Hex);
+            _shownForeground = foreground;
+        }
+        if (_shownBackground != background && _bgButton is not null)
+        {
+            _bgButton.Background = Studio.Brush(background.Hex);
+            _shownBackground = background;
+        }
     }
     public new void Dispose()
     {
-        if (_disposed)
-            return;
+        if (_disposed) return;
         _disposed = true;
         _recoveryTimer.Stop();
-        foreach (var s in _documents)
-            s.Changed -= SessionChanged;
+        foreach (var s in _documents) s.Changed -= SessionChanged;
+        _properties.Dispose();
+        _histogramTimer?.Stop();
+        _channelPreview.Dispose();
+        _documentTabs.Clear();
         Surface.Dispose();
     }
 }

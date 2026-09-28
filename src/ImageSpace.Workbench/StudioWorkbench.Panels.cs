@@ -1,3 +1,5 @@
+using ImageSpace.Skia;
+
 namespace ImageSpace.Workbench;
 
 public sealed partial class StudioWorkbench
@@ -16,7 +18,7 @@ public sealed partial class StudioWorkbench
         _properties.PreviewInvalidated += Surface.Invalidate;
         _properties.PreferredHeightChanged += height =>
         {
-            grid.PreferredMiddleHeight = Session.Document.ActiveLayer?.Adjustment == AdjustmentKind.Levels ? Math.Max(height, 470) : height;
+            grid.PreferredMiddleHeight = height;
             grid.UpdateLayoutAllocation();
         };
         var color = new Grid
@@ -72,64 +74,108 @@ public sealed partial class StudioWorkbench
         return grid;
     }
 
+    private ScrollViewer? _historyHost, _channelsHost;
+    private bool _channelsBuilt, _historyDirty = true;
+    private EditorSession? _historySession;
+    private readonly List<HistoryEntry> _shownHistory = [];
+    private readonly List<StudioButton> _historyButtons = [];
+    private TextBlock? _historyHeader;
+    private StudioButton? _historyUndo, _historyRedo;
+    private int _histogramChannel = -1;
+    private DispatcherTimer? _histogramTimer;
+    private readonly DocumentPreviewCache _channelPreview = new();
+    private long _shownChannelBuild = -1;
+    private int _shownChannel = -2;
+    public long HistoryButtonsCreated { get; private set; }
+    public long ChannelHistogramBuilds => _channelPreview.Builds;
+
     private void SetBottomMode(string mode)
     {
         _bottomMode = mode;
         foreach (var (name, button) in _panelTabs) button.Selected(name == mode);
-        _bottomPanel.Content = mode switch
+        _histogramTimer?.Stop();
+        switch (mode)
         {
-            "History" => new ScrollViewer { Content = _history, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-            "Channels" => new ScrollViewer { Content = _channels, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
-            _ => _layers
-        };
-        if (mode == "Channels") UpdateHistogram();
+            case "History":
+                RefreshHistory();
+                _historyHost ??= new ScrollViewer { Content = _history, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+                _bottomPanel.Content = _historyHost;
+                break;
+            case "Channels":
+                RefreshChannels();
+                _channelsHost ??= new ScrollViewer { Content = _channels, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+                _bottomPanel.Content = _channelsHost;
+                UpdateHistogram(_histogramChannel);
+                break;
+            default:
+                _bottomPanel.Content = _layers;
+                _layers.Bind(Session, Surface.Renderer);
+                break;
+        }
+    }
+
+    private void TravelHistory(int target)
+    {
+        _historyTravel++;
+        try { while (Session.History.Count > target && Session.CanUndo) Session.Undo(); }
+        finally { _historyTravel--; Refresh(); }
     }
 
     private void RefreshHistory()
     {
-        _history.Children.Clear();
-        _history.Children.Add(Studio.Box(Studio.Label($"  History states  ·  {Session.History.Count}", 11, "#a7a7a7"), "#303030", new Thickness(6, 10, 6, 8)));
-        _history.Children.Add(new StudioButton("Open document", () => Run(() =>
+        if (!_historyDirty && ReferenceEquals(_historySession, Session)) return;
+        if (!ReferenceEquals(_historySession, Session))
         {
-            while (Session.CanUndo) Session.Undo();
-        }))
+            _shownHistory.Clear(); _historyButtons.Clear(); _history.Children.Clear();
+            _historyHeader = null; _historySession = Session;
+        }
+        if (_historyHeader is null)
         {
-            Height = 32, HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 3, 8, 3)
-        });
-        for (var index = 0; index < Session.History.Count; index++)
+            _historyHeader = Studio.Label("", 11, "#a7a7a7");
+            _history.Children.Add(Studio.Box(_historyHeader, "#303030", new Thickness(6, 10, 6, 8)));
+            _history.Children.Add(new StudioButton("Open document", () => Run(() => TravelHistory(0)))
+            { Height = 32, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 3, 8, 3) });
+            _historyUndo = new StudioButton("Undo", () => Run(Session.Undo), "undo");
+            _historyRedo = new StudioButton("Redo", () => Run(Session.Redo), "redo");
+            _history.Children.Add(Studio.Row(_historyUndo, _historyRedo));
+        }
+        _historyHeader.Text = $"  History states  ·  {Session.History.Count}";
+        var common = 0;
+        while (common < _shownHistory.Count && common < Session.History.Count && ReferenceEquals(_shownHistory[common], Session.History[common])) common++;
+        while (_shownHistory.Count > common)
+        {
+            _history.Children.Remove(_historyButtons[^1]);
+            _historyButtons.RemoveAt(_historyButtons.Count - 1);
+            _shownHistory.RemoveAt(_shownHistory.Count - 1);
+        }
+        for (var index = common; index < Session.History.Count; index++)
         {
             var target = index + 1;
-            var button = new StudioButton(Session.History[index].Name, () => Run(() =>
-            {
-                while (Session.History.Count > target) Session.Undo();
-            }))
-            {
-                Height = 31, HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(20, 3, 8, 3)
-            };
-            button.Selected(index == Session.History.Count - 1);
-            _history.Children.Add(button);
+            var entry = Session.History[index];
+            var button = new StudioButton(entry.Name, () => Run(() => TravelHistory(target)))
+            { Height = 31, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(20, 3, 8, 3) };
+            _shownHistory.Add(entry); _historyButtons.Add(button);
+            _history.Children.Insert(_history.Children.Count - 1, button);
+            HistoryButtonsCreated++;
         }
-        _history.Children.Add(Studio.Row(new StudioButton("Undo", () => Run(Session.Undo), "undo"), new StudioButton("Redo", () => Run(Session.Redo), "redo")));
+        for (var index = 0; index < _historyButtons.Count; index++) _historyButtons[index].Selected(index == _historyButtons.Count - 1);
+        _historyUndo!.IsEnabled = Session.CanUndo; _historyRedo!.IsEnabled = Session.CanRedo;
+        _historyDirty = false;
     }
 
     private void RefreshChannels()
     {
-        _channels.Children.Clear();
+        if (_channelsBuilt) return;
+        _channelsBuilt = true;
         _channels.Margin = new Thickness(9);
-        _channels.Children.Add(Studio.Label("Composite histogram", 12));
+        _channels.Children.Add(Studio.Label("Sampled composite histogram", 12));
         _channels.Children.Add(_histogram);
         foreach (var (name, index) in new[] { ("RGB", -1), ("Red", 0), ("Green", 1), ("Blue", 2) })
-        {
             _channels.Children.Add(new StudioButton(name + " histogram", () => UpdateHistogram(index))
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left, Height = 30
-            });
-        }
+            { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Height = 30 });
         _channels.Children.Add(new StudioButton("Load alpha as selection", () => Run(() =>
         {
+            // This editing command intentionally uses full resolution; only the displayed histogram is sampled.
             var composite = Surface.Renderer.Rasterize(Session.Document);
             Session.Execute("Select composite alpha", document =>
             {
@@ -143,8 +189,28 @@ public sealed partial class StudioWorkbench
 
     private void UpdateHistogram(int channel = -1)
     {
-        try { _histogram.Values = RasterOperations.Histogram(Surface.Renderer.Rasterize(Session.Document), channel); }
-        catch (Exception error) { ShowStatus(error.Message); }
+        _histogramChannel = channel;
+        if (_histogramTimer is null)
+        {
+            _histogramTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            _histogramTimer.Tick += (_, _) =>
+            {
+                _histogramTimer.Stop();
+                if (_disposed || _bottomMode != "Channels" || _panelsHidden) return;
+                if (Session.IsInTransaction) { UpdateHistogram(_histogramChannel); return; }
+                try
+                {
+                    var document = Session.Document;
+                    var pixels = _channelPreview.Get(document, document.Layers.Count, 256, Surface.Renderer);
+                    if (_shownChannelBuild == _channelPreview.Builds && _shownChannel == _histogramChannel) return;
+                    _histogram.Values = RasterOperations.Histogram(pixels, _histogramChannel);
+                    _shownChannelBuild = _channelPreview.Builds; _shownChannel = _histogramChannel;
+                }
+                catch (Exception error) { ShowStatus(error.Message); }
+            };
+            Unloaded += (_, _) => _histogramTimer.Stop();
+        }
+        if (!_histogramTimer.IsEnabled) _histogramTimer.Start();
     }
 
     private void ShowSwatches()

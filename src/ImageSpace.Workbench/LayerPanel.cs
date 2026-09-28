@@ -1,4 +1,5 @@
 using ImageSpace.Skia;
+using Microsoft.UI.Xaml.Automation;
 
 namespace ImageSpace.Workbench;
 
@@ -6,6 +7,11 @@ public sealed class LayerPanel : UserControl
 {
     private EditorSession? _session;
     private ImageRenderer? _renderer;
+    private readonly Dictionary<Guid, LayerRow> _items = [];
+    private readonly StudioButton _blend, _lock, _mode;
+    private readonly NumericField _opacity;
+    private bool _updating;
+    public long RowsCreated { get; private set; }
     private readonly StackPanel _rows = new() { Spacing = 1 };
     private readonly StackPanel _settings = new() { Spacing = 5, Margin = new Thickness(8, 6, 8, 7) };
     private readonly ScrollViewer _scroll;
@@ -32,22 +38,33 @@ public sealed class LayerPanel : UserControl
                 new() { Height = GridLength.Auto }
             }
         };
+        _blend = new StudioButton("Normal", ShowBlendMenu) { Width = 148, HorizontalContentAlignment = HorizontalAlignment.Left };
+        _opacity = new NumericField("Opacity", 100, 0, 100, 118) { Format = "0" };
+        _opacity.ValueChanged += value =>
+        {
+            if (!_updating) Run(editor => editor.Execute("Layer opacity", document =>
+            { if (document.ActiveLayer is { Locked: false } layer) layer.Opacity = (float)value / 100; }));
+        };
+        _lock = new StudioButton("Lock layer", () => Run(editor => editor.Execute("Layer lock", document =>
+        { if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked; })), "lock") { Width = 26, Height = 22 };
+        _mode = new StudioButton("Editing pixels", () =>
+        {
+            if (_session?.Document.ActiveLayer is not { Mask: not null } layer) return;
+            if (_session.Document.EditMask) _session.SelectLayer(layer.Id); else _session.SelectMask(layer.Id);
+        }) { Height = 22, FontSize = 10 };
+        _settings.Children.Add(Studio.Row(_blend, _opacity));
+        _settings.Children.Add(Studio.Row(Studio.Label("Lock:", 11, "#a6a6a6"), _lock, _mode));
         grid.Children.Add(_settings);
         _scroll = new ScrollViewer
         {
-            Content = _rows,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
-        // Wait for actual row and viewport arrangement before scrolling. Merely changing
-        // selection cannot reveal the row using the previous inspector's viewport height.
+        AutomationProperties.SetName(_scroll, "Layer list");
         _scroll.LayoutUpdated += (_, _) => RevealSelection();
         _scroll.SizeChanged += (_, _) =>
         {
-            // A larger mask/tone inspector can shrink the viewport without changing
-            // ActiveLayerId. Keep the editing target visible after the new arrangement.
-            if (_followActiveSelection)
-                _revealSelection = true;
+            if (_followActiveSelection) _revealSelection = true;
         };
         Grid.SetRow(_scroll, 1);
         grid.Children.Add(_scroll);
@@ -72,9 +89,9 @@ public sealed class LayerPanel : UserControl
     {
         if (!ReferenceEquals(_session, session))
         {
+            _items.Clear();
+            _rows.Children.Clear();
             _lastActive = session.Document.ActiveLayerId;
-            // Preserve the initial sample's top-of-stack presentation; switching to
-            // an opened document must reveal its saved active layer.
             _followActiveSelection = _session is not null;
             _revealSelection = _followActiveSelection;
         }
@@ -85,203 +102,103 @@ public sealed class LayerPanel : UserControl
 
     private void Run(Action<EditorSession> action)
     {
-        if (_session is null || _session.IsInTransaction)
-            return;
-        try
-        {
-            action(_session);
-        }
+        if (_session is null || _session.IsInTransaction) return;
+        try { action(_session); }
         catch (Exception error) { Error?.Invoke(error.Message); }
     }
 
     private void RevealSelection()
     {
-        if (!_revealSelection || _session is null || _scroll.ViewportHeight <= 0)
-            return;
+        if (!_revealSelection || _session is null || _scroll.ViewportHeight <= 0) return;
         var index = _session.Document.Layers.FindIndex(layer => layer.Id == _session.Document.ActiveLayerId);
-        if (index < 0)
-        {
-            _revealSelection = false;
-            return;
-        }
+        if (index < 0) { _revealSelection = false; return; }
         var rowIndex = _session.Document.Layers.Count - index - 1;
-        if (rowIndex >= _rows.Children.Count || _rows.Children[rowIndex] is not FrameworkElement { ActualHeight: > 0 })
-            return;
-        // Clearing/rebuilding the rows can temporarily reset the extent and offset.
-        // Do not consume the request against that intermediate layout.
+        if (rowIndex >= _rows.Children.Count || _rows.Children[rowIndex] is not FrameworkElement { ActualHeight: > 0 }) return;
         var expectedExtent = _rows.Children.Count * 44.0 - 1;
-        if (_scroll.ExtentHeight + .5 < expectedExtent)
-            return;
+        if (_scroll.ExtentHeight + .5 < expectedExtent) return;
         var top = rowIndex * 44.0;
         var bottom = top + 43;
         var offset = _scroll.VerticalOffset;
-        if (top < offset)
-            offset = top;
-        else if (bottom > offset + _scroll.ViewportHeight)
-            offset = bottom - _scroll.ViewportHeight;
+        if (top < offset) offset = top;
+        else if (bottom > offset + _scroll.ViewportHeight) offset = bottom - _scroll.ViewportHeight;
         offset = Math.Clamp(offset, 0, Math.Max(0, _scroll.ScrollableHeight));
         if (Math.Abs(offset - _scroll.VerticalOffset) > .5)
         {
-            // ChangeView may schedule its offset update. Verify the resulting offset
-            // on the next layout instead of marking an unpresented request complete.
             _scroll.ChangeView(null, offset, null, true);
             return;
         }
         _revealSelection = false;
     }
 
+    private void ShowBlendMenu() => Studio.Menu(_blend, Enum.GetValues<LayerBlend>().Select(mode =>
+        (mode.ToString(), "", (Action)(() => Run(editor => editor.Execute("Blend mode", document =>
+        { if (document.ActiveLayer is { Locked: false } layer && layer.Kind != LayerKind.Adjustment) layer.Blend = mode; }))), true)));
+
+    public void RefreshSelection()
+    {
+        if (_session is null) return;
+        var active = _session.Document.ActiveLayer;
+        var previous = _lastActive;
+        if (previous != _session.Document.ActiveLayerId) _followActiveSelection = true;
+        _lastActive = _session.Document.ActiveLayerId;
+        if (_session.Document.EditMask) _followActiveSelection = true;
+        _revealSelection |= _followActiveSelection;
+        _updating = true;
+        try
+        {
+            _addMask.IsEnabled = active is { Locked: false, Mask: null };
+            _deleteLayer.IsEnabled = active is { Locked: false };
+            _blend.IsEnabled = active is { Locked: false } && active.Kind != LayerKind.Adjustment;
+            var blendName = active?.Blend.ToString() ?? "Normal";
+            var blendLabel = blendName + "        ⌄";
+            // Do not oscillate automation/tooltip names between the decorated label
+            // and semantic mode on every selection when the mode has not changed.
+            if (_blend.Content is not TextBlock text || text.Text != blendLabel)
+            {
+                _blend.SetLabel(blendLabel);
+                _blend.SetName(blendName);
+            }
+            _opacity.IsEnabled = active is { Locked: false };
+            _opacity.Value = (active?.Opacity ?? 1) * 100;
+            if (previous != _lastActive) _opacity.ResetPendingEdit();
+            _lock.IsEnabled = active is not null;
+            _lock.Selected(active?.Locked == true);
+            _lock.SetName(active?.Locked == true ? "Unlock layer" : "Lock layer");
+            _mode.IsEnabled = active?.Mask is not null;
+            _mode.SetLabel(_session.Document.EditMask ? "Editing mask" : active?.Kind == LayerKind.Adjustment ? "Adjustment" : "Editing pixels");
+        }
+        finally { _updating = false; }
+        if (previous != _lastActive && _items.TryGetValue(previous, out var old)) old.RefreshSelection(false, false);
+        if (_items.TryGetValue(_lastActive, out var current)) current.RefreshSelection(true, _session.Document.EditMask);
+        RevealSelection();
+    }
+
     public void Refresh()
     {
-        if (_session is null)
-            return;
-        var session = _session;
-        var active = session.Document.ActiveLayer;
-        if (_lastActive != session.Document.ActiveLayerId)
+        if (_session is null || _renderer is null) return;
+        var document = _session.Document;
+        for (var index = 0; index < document.Layers.Count; index++)
         {
-            _lastActive = session.Document.ActiveLayerId;
-            _followActiveSelection = true;
-        }
-        if (session.Document.EditMask)
-            _followActiveSelection = true;
-        // Undo/redo and same-layer property edits rebuild rows too, so identity
-        // changes alone are not a sufficient condition for restoring visibility.
-        _revealSelection |= _followActiveSelection;
-        _addMask.IsEnabled = active is { Locked: false, Mask: null };
-        _deleteLayer.IsEnabled = active is { Locked: false };
-        _settings.Children.Clear();
-        var blend = new StudioButton(active?.Blend.ToString() ?? "Normal", () => { })
-        {
-            Width = 148,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            IsEnabled = active is { Locked: false } && active.Kind != LayerKind.Adjustment,
-            Content = Studio.Label((active?.Blend.ToString() ?? "Normal") + "        ⌄", 11)
-        };
-        blend.Click += (_, _) => Studio.Menu(blend, Enum.GetValues<LayerBlend>().Select(mode =>
-            (mode.ToString(), "", (Action)(() => Run(editor => editor.Execute("Blend mode", document =>
+            var layer = document.Layers[document.Layers.Count - index - 1];
+            if (!_items.TryGetValue(layer.Id, out var row))
             {
-                if (document.ActiveLayer is { Locked: false } layer && layer.Kind != LayerKind.Adjustment)
-                    layer.Blend = mode;
-            }))), true)));
-        var opacity = new NumericField("Opacity", (active?.Opacity ?? 1) * 100, 0, 100, 118)
-        {
-            Format = "0",
-            IsEnabled = active is { Locked: false }
-        };
-        opacity.ValueChanged += value => Run(editor => editor.Execute("Layer opacity", document =>
-        {
-            if (document.ActiveLayer is { Locked: false } layer)
-                layer.Opacity = (float)value / 100;
-        }));
-        _settings.Children.Add(Studio.Row(blend, opacity));
-        var lockButton = new StudioButton(active?.Locked == true ? "Unlock layer" : "Lock layer", () => Run(editor => editor.Execute("Layer lock", document =>
-        {
-            if (document.ActiveLayer is { } layer)
-                layer.Locked = !layer.Locked;
-        })), "lock")
-        {
-            Width = 26,
-            Height = 22,
-            IsEnabled = active is not null
-        };
-        lockButton.Selected(active?.Locked == true);
-        var modeName = session.Document.EditMask ? "Editing mask" : active?.Kind == LayerKind.Adjustment ? "Adjustment" : "Editing pixels";
-        var maskButton = new StudioButton(modeName, () =>
-        {
-            if (session.IsInTransaction || active?.Mask is null)
-                return;
-            session.Document.EditMask = !session.Document.EditMask;
-            session.Notify();
-        })
-        {
-            Height = 22,
-            FontSize = 10,
-            IsEnabled = active?.Mask is not null
-        };
-        _settings.Children.Add(Studio.Row(Studio.Label("Lock:", 11, "#a6a6a6"), lockButton, maskButton));
-        _rows.Children.Clear();
-        foreach (var layer in session.Document.Layers.AsEnumerable().Reverse())
-        {
-            var selected = layer.Id == session.Document.ActiveLayerId;
-            var row = new Grid
-            {
-                Height = 43,
-                Background = Studio.Brush(selected ? "#484848" : "#303030"),
-                ColumnDefinitions =
-                {
-                    new() { Width = new GridLength(28) }, new() { Width = new GridLength(54) },
-                    new() { Width = new GridLength(1, GridUnitType.Star) }, new() { Width = GridLength.Auto }
-                }
-            };
-            row.Children.Add(new StudioButton((layer.Visible ? "Hide " : "Show ") + layer.Name, () => Run(editor => editor.Execute("Layer visibility", document =>
-            {
-                var current = document.Layers.FirstOrDefault(item => item.Id == layer.Id);
-                if (current is not null)
-                    current.Visible = !current.Visible;
-            })), layer.Visible ? "eye" : "hidden")
-            {
-                Width = 27,
-                Height = 32,
-                Padding = new Thickness(4)
-            });
-            var thumbnail = new Border
-            {
-                BorderThickness = new Thickness(selected && !session.Document.EditMask ? 2 : 1),
-                BorderBrush = Studio.Brush(selected ? "#b6b6b6" : "#171717"),
-                Child = new LayerThumbnail { Layer = layer, Renderer = _renderer },
-                Margin = new Thickness(3, 5, 4, 5)
-            };
-            Grid.SetColumn(thumbnail, 1);
-            row.Children.Add(thumbnail);
-            var label = new StudioButton(layer.Name, () => session.SelectLayer(layer.Id))
-            {
-                Height = 41,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Background = Studio.Brush(selected ? "#484848" : "#303030"),
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(5, 0, 2, 0)
-            };
-            label.DoubleTapped += (_, e) => { session.SelectLayer(layer.Id); RenameRequested?.Invoke(); e.Handled = true; };
-            Grid.SetColumn(label, 2);
-            row.Children.Add(label);
-            var suffix = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            if (layer.Mask is not null)
-            {
-                var link = new StudioButton((layer.MaskLinked ? "Unlink mask for " : "Link mask for ") + layer.Name, () => Run(editor =>
-                {
-                    editor.SelectMask(layer.Id);
-                    if (editor.Document.ActiveLayer is { } selectedLayer)
-                        editor.SetMaskLinked(!selectedLayer.MaskLinked);
-                }), layer.MaskLinked ? "link" : "unlink")
-                {
-                    Width = 24,
-                    Height = 28,
-                    Padding = new Thickness(3),
-                    IsEnabled = !layer.Locked
-                };
-                suffix.Children.Add(link);
-                var mask = new StudioButton("Edit mask for " + layer.Name, () =>
-                {
-                    session.SelectMask(layer.Id);
-                }, "mask")
-                {
-                    Width = 34,
-                    Height = 28,
-                    Padding = new Thickness(2),
-                    Content = new LayerThumbnail { Layer = layer, ShowMask = true, Renderer = _renderer, Width = 28, Height = 20 }
-                };
-                mask.Selected(session.Document.EditMask && selected);
-                suffix.Children.Add(mask);
+                row = new LayerRow(_session, layer.Id, message => Error?.Invoke(message), () => RenameRequested?.Invoke());
+                _items.Add(layer.Id, row);
+                RowsCreated++;
             }
-            if (layer.Locked)
-                suffix.Children.Add(new IconView("lock") { Width = 14, Height = 14, Margin = new Thickness(4) });
-            if (layer.Kind == LayerKind.Text)
-                suffix.Children.Add(Studio.Label("T", 12, "#a9a9a9"));
-            if (layer.Kind == LayerKind.Adjustment)
-                suffix.Children.Add(new IconView("adjust") { Margin = new Thickness(4) });
-            Grid.SetColumn(suffix, 3);
-            row.Children.Add(suffix);
-            _rows.Children.Add(row);
+            if (index >= _rows.Children.Count || !ReferenceEquals(_rows.Children[index], row))
+            {
+                if (_rows.Children.Contains(row)) _rows.Children.Remove(row);
+                _rows.Children.Insert(index, row);
+            }
+            row.Bind(layer, _renderer, layer.Id == document.ActiveLayerId, document.EditMask);
         }
+        while (_rows.Children.Count > document.Layers.Count)
+        {
+            var row = (LayerRow)_rows.Children[^1];
+            _items.Remove(row.LayerId);
+            _rows.Children.RemoveAt(_rows.Children.Count - 1);
+        }
+        RefreshSelection();
     }
 }

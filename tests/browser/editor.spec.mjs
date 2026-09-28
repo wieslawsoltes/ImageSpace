@@ -34,8 +34,6 @@ test('paint and undo operate through real pointer and keyboard events',async({pa
   await boot(page);await click(page,'New pixel layer');await expect.poll(async()=> (await state(page)).layers).toBe(9);await click(page,'Brush tool (B)');
   const a=await world(page,560,460),b=await world(page,810,450);await page.mouse.move(12,10);const mid=await world(page,680,455);const old=await pixel(page,mid);
   await drag(page,a,b);await page.mouse.move(12,10);await expect.poll(async()=> (await state(page)).history).toBe(2);
-  // Committed model state can precede presentation by a compositor frame on cold CDN starts.
-  // Keep a real pixel assertion and wait for presentation, rather than extending a fixed sleep.
   await expect.poll(async()=>distance(await pixel(page,mid),old),{message:'The painted stroke must change visible pixels.'}).toBeGreaterThan(20);
   const painted=decodePng(await screenshot(page,'painted'));expect(distance(painted.pixel(mid.x,mid.y).slice(0,3),old)).toBeGreaterThan(20);
   await page.keyboard.press('Control+z');await expect.poll(async()=> (await state(page)).history).toBe(1);await expect.poll(()=>pixel(page,mid),{message:'Undo must restore the exact pre-stroke RGB pixels.'}).toEqual(old);
@@ -47,7 +45,15 @@ test('shape transform, selection, crop and native document roundtrip',async({pag
   await boot(page);await click(page,'Rectangle tool (U)');await drag(page,await world(page,520,360),await world(page,740,450));await expect.poll(async()=> (await state(page)).activeKind).toBe('Rectangle');
   await click(page,'Move tool (V)');const x=(await state(page)).activeX;await page.keyboard.press('Shift+ArrowRight');await expect.poll(async()=> (await state(page)).activeX).toBe(x+10);
   await click(page,'Marquee tool (M)');await drag(page,await world(page,500,330),await world(page,800,510));await expect.poll(async()=> (await state(page)).selection).toBe(true);await screenshot(page,'selection');await page.keyboard.press('Control+d');await expect.poll(async()=> (await state(page)).selection).toBe(false);
-  await click(page,'Crop tool (C)');await drag(page,await world(page,100,100),await world(page,900,600));await page.keyboard.press('Enter');await expect.poll(async()=> (await state(page)).width).toBeGreaterThanOrEqual(798);expect((await state(page)).width).toBeLessThanOrEqual(802);await page.keyboard.press('Control+z');await expect.poll(async()=> (await state(page)).width).toBe(1000);
+  const beforeCrop=await state(page);
+  await click(page,'Crop tool (C)');await drag(page,await world(page,100,100),await world(page,900,600));await page.keyboard.press('Enter');
+  // Both bounds and the committed edit must be observed together: the old 1000px
+  // canvas already satisfies width>=798 and is not evidence of a completed crop.
+  await expect.poll(async()=>{
+    const s=await state(page);
+    return s.width>=798&&s.width<=802&&s.height>=498&&s.height<=502&&s.history===beforeCrop.history+1;
+  },{message:'Crop must commit the requested 800x500 canvas and one undo state'}).toBe(true);
+  await page.keyboard.press('Control+z');await expect.poll(async()=> (await state(page)).width).toBe(1000);
   const downloadPromise=page.waitForEvent('download');await page.keyboard.press('Control+s');const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.imagespace$/);const file=await download.path();expect(file).toBeTruthy();await expect.poll(async()=> (await state(page)).dirty).toBe(false);
   const chooserPromise=page.waitForEvent('filechooser');await page.keyboard.press('Control+o');const chooser=await chooserPromise;await chooser.setFiles({name:'Roundtrip.imagespace',mimeType:'application/x-imagespace',buffer:await (await import('node:fs/promises')).readFile(file)});await expect.poll(async()=> (await state(page)).documents,{timeout:30000}).toBe(2);expect((await state(page)).layers).toBe(9);await screenshot(page,'roundtrip');
 });

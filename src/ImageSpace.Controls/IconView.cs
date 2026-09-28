@@ -6,11 +6,18 @@ namespace ImageSpace.Controls;
 /// <summary>Original vector icon set; no proprietary icon font or Adobe artwork.</summary>
 public sealed class IconView : SKCanvasElement
 {
+    private string _icon = "";
+    private SKColor _tint = new(207, 207, 207);
     public string Icon
     {
-        get; set;
+        get => _icon;
+        set { if (_icon == value) return; _icon = value; Invalidate(); }
     }
-    public SKColor Tint { get; set; } = new(207, 207, 207);
+    public SKColor Tint
+    {
+        get => _tint;
+        set { if (_tint == value) return; _tint = value; Invalidate(); }
+    }
     public IconView(string icon)
     {
         Icon = icon;

@@ -4,7 +4,7 @@ namespace ImageSpace.Workbench;
 
 public sealed partial class MaskPropertiesEditor : UserControl
 {
-    private readonly EditorSession _session;
+    private EditorSession _session;
     private readonly NumericField _density;
     private readonly NumericField _feather;
     private readonly StudioButton _invert;
@@ -15,7 +15,7 @@ public sealed partial class MaskPropertiesEditor : UserControl
     private bool _refreshing;
     public Guid LayerId
     {
-        get;
+        get; private set;
     }
     public event Action<string>? Error;
     public event Action<MaskPreviewMode>? PreviewChanged;
@@ -83,6 +83,23 @@ public sealed partial class MaskPropertiesEditor : UserControl
         RefreshFromDocument();
     }
 
+    public void Bind(EditorSession session, Guid layerId)
+    {
+        var changed = !ReferenceEquals(_session, session) || LayerId != layerId;
+        _session = session;
+        LayerId = layerId;
+        if (changed)
+        {
+            foreach (var (mode, button) in _previews) button.Selected(mode == MaskPreviewMode.Composite);
+        }
+        RefreshFromDocument();
+        if (changed)
+        {
+            _density.ResetPendingEdit(); _feather.ResetPendingEdit();
+            _x.ResetPendingEdit(); _y.ResetPendingEdit(); _width.ResetPendingEdit(); _height.ResetPendingEdit(); _angle.ResetPendingEdit();
+        }
+    }
+
     private Layer? Current => _session.Document.ActiveLayerId == LayerId
         ? _session.Document.ActiveLayer : null;
 
@@ -107,7 +124,8 @@ public sealed partial class MaskPropertiesEditor : UserControl
             _density.Value = layer.MaskDensity * 100;
             _feather.Value = layer.MaskFeather;
             _state.Text = layer.Locked ? "Locked · inspection only" : layer.MaskEnabled ? "Enabled · editing authored coverage" : "Disabled · mask edits are retained";
-            _toggle.Content = Studio.Label(layer.MaskEnabled ? "Disable" : "Enable");
+            _toggle.SetLabel(layer.MaskEnabled ? "Disable" : "Enable");
+            _toggle.SetName("Toggle mask");
         }
         finally { _refreshing = false; }
     }

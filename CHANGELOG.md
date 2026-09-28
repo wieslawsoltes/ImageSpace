@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2-alpha.1 — 2026-09-28
+
+- Retained schema-specific inspectors, identity-keyed layer rows, tool options and document tabs instead of rebuilding the workbench on selection.
+- Cached button templates per UI thread, suppressed unchanged numeric/graph/layout writes, and retained focus and current model binding through undo.
+- Separated active-target and saved-state notifications from content changes; plain Move-tool clicks create neither history snapshots nor recovery work.
+- Deferred/coalesced sampled histogram work with independent rendering caches and content-dependent prefix validation. Hidden History/Channels content is built on demand.
+- Split scene and interaction overlay drawings; hover, handles and marching ants no longer explicitly invalidate the image compositor.
+- Removed thumbnail tile snapshots; added deterministic preview/selection ownership cases and real-pointer UI responsiveness regressions with structural counters.
+- Validation artifacts establish exact-head results; CPU refresh timing is not event-to-photon or physical-GPU timing.
+
 ## 0.3.1-alpha.1 — 2026-09-28
 
 - Added **Layer → Apply layer mask** for enabled raster masks, including density, feather and linked/unlinked affine placement, sampled at authored pixel resolution.

@@ -2,18 +2,20 @@ using ImageSpace.Skia;
 
 namespace ImageSpace.Workbench;
 
-public sealed class PropertyPanel : UserControl
+/// <summary>Retains one inspector per schema, independent of layer count and undo snapshot identity.</summary>
+public sealed class PropertyPanel : UserControl, IDisposable
 {
     private EditorSession? _session;
-    private bool _refreshing;
-    private ToneAdjustmentEditor? _toneEditor;
-    private MaskPropertiesEditor? _maskEditor;
-    public event Action<MaskPreviewMode>? MaskPreviewChanged;
+    private readonly Dictionary<(LayerKind?, AdjustmentKind), BasicPropertiesEditor> _basic = [];
+    private ToneAdjustmentEditor? _curves, _levels;
+    private MaskPropertiesEditor? _mask;
+    private UIElement? _current;
+    private double _height;
     private readonly StackPanel _body = new() { Spacing = 8, Margin = new Thickness(10, 9, 10, 10) };
-    public ImageRenderer? Renderer
-    {
-        get; set;
-    }
+    public long InspectorBuilds { get; private set; }
+    public long HistogramBuilds => (_curves?.HistogramBuilds ?? 0) + (_levels?.HistogramBuilds ?? 0);
+    public ImageRenderer? Renderer { get; set; }
+    public event Action<MaskPreviewMode>? MaskPreviewChanged;
     public event Action<Layer>? TextEditRequested;
     public event Action<string>? Error;
     public event Action? PreviewInvalidated;
@@ -23,147 +25,80 @@ public sealed class PropertyPanel : UserControl
     {
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
-        Content = new ScrollViewer
-        {
-            Content = _body,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-        };
+        Content = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     }
 
     public void Bind(EditorSession session)
     {
         if (!ReferenceEquals(_session, session))
         {
-            _toneEditor = null;
-            _maskEditor = null;
+            _curves?.ResetSession(session); _levels?.ResetSession(session);
+            _mask?.Bind(session, session.Document.ActiveLayerId);
+            foreach (var editor in _basic.Values) editor.Bind(session);
         }
-        _session = session;
-        Refresh();
+        _session = session; Refresh();
     }
 
     public void Refresh()
     {
-        if (_session is null)
-            return;
+        if (_session is null) return;
         var layer = _session.Document.ActiveLayer;
         var maskEditing = _session.Document.EditMask && layer?.Mask is not null;
         var tone = !maskEditing && layer is { Kind: LayerKind.Adjustment, Adjustment: AdjustmentKind.Curves or AdjustmentKind.Levels };
-        PreferredHeightChanged?.Invoke(maskEditing ? (layer!.MaskLinked ? 352 : 452) : tone ? 414 : 224);
-        if (maskEditing && _maskEditor?.LayerId == layer!.Id)
+        var height = maskEditing ? (layer!.MaskLinked ? 352 : 452) : tone ? (layer!.Adjustment == AdjustmentKind.Levels ? 470 : 414) : 224;
+        if (_height != height) { _height = height; PreferredHeightChanged?.Invoke(height); }
+        UIElement next;
+        if (maskEditing)
         {
-            _maskEditor.RefreshFromDocument();
-            return;
+            if (_mask is null)
+            {
+                _mask = new MaskPropertiesEditor(_session, layer!.Id);
+                _mask.Error += message => Error?.Invoke(message);
+                _mask.PreviewChanged += mode => MaskPreviewChanged?.Invoke(mode);
+                InspectorBuilds++;
+            }
+            _mask.Bind(_session, layer!.Id);
+            next = _mask;
         }
-        if (tone && _toneEditor is not null && _toneEditor.LayerId == layer!.Id && _toneEditor.Kind == layer.Adjustment)
+        else if (tone)
         {
-            // Preserve the graph instance, keyboard focus, selected channel and scroll position on commit/undo.
-            _toneEditor.RefreshFromDocument();
-            return;
+            var editor = layer!.Adjustment == AdjustmentKind.Curves ? _curves : _levels;
+            if (editor is null)
+            {
+                editor = new ToneAdjustmentEditor(_session, layer.Id, Renderer, () => PreviewInvalidated?.Invoke());
+                editor.Error += message => Error?.Invoke(message);
+                if (layer.Adjustment == AdjustmentKind.Curves) _curves = editor; else _levels = editor;
+                InspectorBuilds++;
+            }
+            editor.Bind(_session, layer.Id, Renderer);
+            next = editor;
         }
-        _refreshing = true;
-        try
+        else
         {
-            _toneEditor = null;
-            _maskEditor = null;
+            var key = (layer?.Kind, layer?.Kind == LayerKind.Adjustment ? layer.Adjustment : AdjustmentKind.None);
+            if (!_basic.TryGetValue(key, out var editor))
+            {
+                editor = new BasicPropertiesEditor(key.Item1, key.Item2);
+                editor.Error += message => Error?.Invoke(message);
+                editor.TextEditRequested += value => TextEditRequested?.Invoke(value);
+                _basic.Add(key, editor);
+                InspectorBuilds++;
+            }
+            editor.Bind(_session);
+            next = editor;
+        }
+        if (!ReferenceEquals(_current, next))
+        {
             _body.Children.Clear();
-            if (maskEditing)
-            {
-                _maskEditor = new MaskPropertiesEditor(_session, layer!.Id);
-                _maskEditor.Error += message => Error?.Invoke(message);
-                _maskEditor.PreviewChanged += mode => MaskPreviewChanged?.Invoke(mode);
-                _body.Children.Add(_maskEditor);
-                return;
-            }
-            if (layer is null)
-            {
-                _body.Children.Add(Studio.Label("Document"));
-                _body.Children.Add(Studio.Label($"{_session.Document.Width} × {_session.Document.Height} px  ·  RGB / 8", 11, "#a0a0a0"));
-                return;
-            }
-            _body.Children.Add(Studio.Row(
-                new IconView(layer.Kind == LayerKind.Text ? "text" : layer.Kind == LayerKind.Adjustment ? "adjust" : "rectangle"),
-                Studio.Label(layer.Kind == LayerKind.Raster ? "Pixel layer" : layer.Kind == LayerKind.Adjustment ? layer.Adjustment + " adjustment" : layer.Kind + " layer")));
-            if (tone)
-            {
-                _toneEditor = new ToneAdjustmentEditor(_session, layer.Id, Renderer, () => PreviewInvalidated?.Invoke());
-                _toneEditor.Error += message => Error?.Invoke(message);
-                _body.Children.Add(_toneEditor);
-                return;
-            }
-            if (layer.Kind == LayerKind.Adjustment)
-            {
-                if (layer.Adjustment is AdjustmentKind.GaussianBlur or AdjustmentKind.BrightnessContrast or AdjustmentKind.Saturation)
-                {
-                    _body.Children.Add(Field("Amount", layer.Amount, layer.Adjustment == AdjustmentKind.GaussianBlur ? 0 : -100,
-                        layer.Adjustment == AdjustmentKind.GaussianBlur ? 32 : 200, (item, value) => item.Amount = value, 252));
-                }
-                if (layer.Adjustment == AdjustmentKind.BrightnessContrast)
-                    _body.Children.Add(Field("Contrast", layer.Secondary, -99, 300, (item, value) => item.Secondary = value, 252));
-                _body.Children.Add(Studio.Label("Use layer opacity to adjust the effect strength.", 11, "#a8a8a8"));
-                return;
-            }
-            _body.Children.Add(Studio.Row(Field("X", layer.X, -100000, 100000, (item, value) => item.X = value, 123),
-                Field("Y", layer.Y, -100000, 100000, (item, value) => item.Y = value, 123)));
-            _body.Children.Add(Studio.Row(Field("W", Math.Abs(layer.Width * layer.ScaleX), 1, 100000,
-                (item, value) => item.ScaleX = value / Math.Max(1, item.Width) * Math.Sign(item.ScaleX), 123),
-                Field("H", Math.Abs(layer.Height * layer.ScaleY), 1, 100000,
-                (item, value) => item.ScaleY = value / Math.Max(1, item.Height) * Math.Sign(item.ScaleY), 123)));
-            _body.Children.Add(Studio.Row(Field("Angle", layer.Rotation, -3600, 3600, (item, value) => item.Rotation = value, 123),
-                new StudioButton("Reset transform", () => Edit("Reset transform", item =>
-                {
-                    item.ScaleX = item.ScaleY = 1;
-                    item.Rotation = 0;
-                }))
-                {
-                    Width = 123
-                }));
-            if (layer.Kind is not (LayerKind.Text or LayerKind.Rectangle or LayerKind.Ellipse))
-                return;
-            var color = Studio.TextInput(layer.Color.Hex, "Layer color", 123);
-            color.LostFocus += (_, _) =>
-            {
-                if (_refreshing || _session.Document.ActiveLayer?.Id != layer.Id)
-                    return;
-                try
-                {
-                    var value = Rgba32.Parse(color.Text);
-                    if (value != layer.Color)
-                        Edit("Layer color", item => item.Color = value);
-                }
-                catch (Exception error) { Error?.Invoke(error.Message); }
-            };
-            if (layer.Kind == LayerKind.Text)
-            {
-                _body.Children.Add(Studio.Row(Field("Size", layer.FontSize, 1, 4096, (item, value) => item.FontSize = value, 123), color));
-                _body.Children.Add(Studio.Row(new StudioButton("Edit text…", () => TextEditRequested?.Invoke(layer)) { Width = 158 },
-                    new StudioButton(layer.Bold ? "Bold ✓" : "Bold", () => Edit("Font weight", item => item.Bold = !item.Bold)) { Width = 88 }));
-            }
-            else
-            {
-                _body.Children.Add(Studio.Row(color, Field("Stroke", layer.StrokeWidth, 0, 200, (item, value) => item.StrokeWidth = value, 123)));
-                if (layer.Kind == LayerKind.Rectangle)
-                    _body.Children.Add(Field("Corner radius", layer.CornerRadius, 0, 2048, (item, value) => item.CornerRadius = value, 252));
-            }
+            _body.Children.Add(next);
+            _current = next;
         }
-        finally { _refreshing = false; }
     }
 
-    private NumericField Field(string label, double value, double minimum, double maximum, Action<Layer, float> set, double width)
+    public new void Dispose()
     {
-        var field = new NumericField(label, value, minimum, maximum, width) { IsEnabled = _session?.Document.ActiveLayer?.Locked != true };
-        field.ValueChanged += number => { if (!_refreshing) Edit("Change " + label, layer => set(layer, (float)number)); };
-        return field;
-    }
-
-    private void Edit(string name, Action<Layer> action)
-    {
-        if (_session?.Document.ActiveLayer is not { Locked: false } layer || _session.IsInTransaction)
-            return;
-        try
-        {
-            _session.Execute(name, _ => action(layer));
-        }
-        catch (Exception error) { Error?.Invoke(error.Message); }
+        _curves?.Dispose(); _levels?.Dispose();
+        _body.Children.Clear(); _basic.Clear();
+        _current = null; _mask = null; _session = null;
     }
 }

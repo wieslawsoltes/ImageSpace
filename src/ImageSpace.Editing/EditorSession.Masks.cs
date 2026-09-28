@@ -16,7 +16,7 @@ public sealed partial class EditorSession
             return;
         Document.ActiveLayerId = layerId;
         Document.EditMask = true;
-        Notify();
+        Notify(EditorChange.ActiveTarget);
     }
 
     public void SetMaskProperties(float density, float feather)

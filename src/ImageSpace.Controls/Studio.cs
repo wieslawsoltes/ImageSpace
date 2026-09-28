@@ -32,7 +32,14 @@ public static class Studio
         AutomationProperties.SetName(box, name);
         return box;
     }
-    public static ControlTemplate ButtonTemplate() => (ControlTemplate)XamlReader.Load("""
+    [ThreadStatic] private static ControlTemplate? _buttonTemplate;
+    private static long _templateBuilds;
+    public static long ButtonTemplateBuilds => Interlocked.Read(ref _templateBuilds);
+    public static ControlTemplate ButtonTemplate() => _buttonTemplate ??= CreateButtonTemplate();
+    private static ControlTemplate CreateButtonTemplate()
+    {
+        Interlocked.Increment(ref _templateBuilds);
+        return (ControlTemplate)XamlReader.Load("""
     <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="Button">
       <Grid>
         <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
@@ -46,8 +53,12 @@ public static class Studio
       </Grid>
     </ControlTemplate>
     """);
+    }
     public static void Menu(FrameworkElement anchor, IEnumerable<(string Label, string Shortcut, Action Action, bool Enabled)> entries)
     {
+        ArgumentNullException.ThrowIfNull(anchor);
+        ArgumentNullException.ThrowIfNull(entries);
+        if (anchor.XamlRoot is not { } root) return;
         var panel = new StackPanel { Spacing = 1, MinWidth = 238 };
         var popup = new Popup { XamlRoot = anchor.XamlRoot, IsLightDismissEnabled = true };
         foreach (var entry in entries)
@@ -67,16 +78,20 @@ public static class Studio
         }
         popup.Child = new Border { Background = Brush("#303030"), BorderBrush = Brush("#131313"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5), Padding = new Thickness(4), Child = new ScrollViewer { Content = panel, MaxHeight = 620, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
         var point = anchor.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, anchor.ActualHeight));
-        popup.HorizontalOffset = Math.Max(0, Math.Min(point.X, anchor.XamlRoot.Size.Width - 260));
-        popup.VerticalOffset = Math.Max(0, Math.Min(point.Y, anchor.XamlRoot.Size.Height - 360));
+        popup.HorizontalOffset = Math.Max(0, Math.Min(point.X, root.Size.Width - 260));
+        popup.VerticalOffset = Math.Max(0, Math.Min(point.Y, root.Size.Height - 360));
         popup.IsOpen = true;
     }
 }
 
 public sealed class StudioButton : Button
 {
+    private static long _created;
+    private bool? _selected;
+    public static long CreatedCount => Interlocked.Read(ref _created);
     public StudioButton(string text, Action action, string? icon = null)
     {
+        Interlocked.Increment(ref _created);
         Template = Studio.ButtonTemplate();
         Background = Studio.Brush("#303030");
         Foreground = Studio.Brush("#d7d7d7");
@@ -96,8 +111,22 @@ public sealed class StudioButton : Button
         ToolTipService.SetToolTip(this, text);
         Click += (_, _) => action();
     }
+    public void SetLabel(string text)
+    {
+        if (Content is TextBlock label) { if (label.Text != text) label.Text = text; }
+        else Content = Studio.Label(text);
+        SetName(text);
+    }
+    public void SetName(string text)
+    {
+        if (AutomationProperties.GetName(this) == text) return;
+        AutomationProperties.SetName(this, text);
+        ToolTipService.SetToolTip(this, text);
+    }
     public void Selected(bool value)
     {
+        if (_selected == value) return;
+        _selected = value;
         Background = Studio.Brush(value ? "#505050" : "#292929");
         BorderBrush = Studio.Brush(value ? "#727272" : "#292929");
     }
