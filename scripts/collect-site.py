@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -42,10 +43,14 @@ index.write_text(html, encoding='utf-8')
 for suffix in ('.br', '.gz'):
     index.with_name(index.name + suffix).unlink(missing_ok=True)
 (args.output / '.nojekyll').touch()
+properties = Path(__file__).resolve().parents[1] / 'Directory.Build.props'
+version = os.environ.get('VERSION') or ET.parse(properties).findtext('.//Version')
+if not version:
+    raise SystemExit('No application version found in VERSION or Directory.Build.props')
 (args.output / 'build-info.json').write_text(json.dumps({
     'application': 'ImageSpace',
     'host': 'Uno WebAssembly',
-    'version': os.environ.get('VERSION', '0.3.0-alpha.1'),
+    'version': version,
     'commit': os.environ.get('GITHUB_SHA', 'local')
 }))
 print(f'Collected and syntax-checked real Uno application from {source}')

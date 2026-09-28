@@ -18,6 +18,7 @@ public sealed partial class StudioWorkbench
             var layer = document.ActiveLayer;
             json.WriteStartObject();
             json.WriteBoolean("ready", true);
+            json.WriteString("version", ProductVersion);
             json.WriteString("name", document.Name);
             json.WriteString("tool", Surface.Tool.ToString());
             json.WriteNumber("documents", _documents.Count);

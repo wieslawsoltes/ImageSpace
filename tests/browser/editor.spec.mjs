@@ -19,6 +19,10 @@ const distance=(a,b)=>a.reduce((sum,value,index)=>sum+Math.abs(value-b[index]),0
 
 test('real Uno workspace renders original artwork and custom controls',async({page})=>{
   const errors=await boot(page);expect((await state(page)).layers).toBe(8);expect(await page.locator('canvas').count()).toBeGreaterThan(0);
+  const identityResponse=await page.request.get('./build-info.json');
+  expect(identityResponse.ok()).toBe(true);
+  const identity=await identityResponse.json();
+  expect((await state(page)).version).toBe(identity.version);
   for(const name of ['File','Edit','Layer','Filter','Brush tool (B)','New pixel layer','Image canvas'])await control(page,name);
   const image=decodePng(await screenshot(page,'workspace'));const c=await control(page,'Image canvas');expect(colorCount(image,c)).toBeGreaterThan(1000);
   const p=await world(page,720,245);const sun=image.pixel(p.x,p.y);expect(sun[0]).toBeGreaterThan(180);expect(sun[0]).toBeGreaterThan(sun[2]);

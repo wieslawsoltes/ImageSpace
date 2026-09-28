@@ -1,7 +1,13 @@
+using System.Reflection;
+
 namespace ImageSpace.Workbench;
 
 public sealed partial class StudioWorkbench
 {
+    private static readonly string ProductVersion = typeof(StudioWorkbench).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+        ?? "development";
+
     private async Task<ContentDialogResult> ShowDialogAsync(string title, UIElement content, string primary = "OK", string close = "Cancel")
     {
         if (_dialogOpen)
@@ -181,9 +187,9 @@ public sealed partial class StudioWorkbench
     private Task HelpAsync() => ShowTextAsync("ImageSpace user guide", StudioGuide.UserGuide);
     private Task CapabilitiesAsync() => ShowTextAsync("Features and compatibility", StudioGuide.Capabilities);
     private Task DiagnosticsAsync() => ShowTextAsync("Rendering diagnostics",
-        $"Application: ImageSpace 0.2.0-alpha.1\nHost: {(OperatingSystem.IsBrowser() ? "Uno WebAssembly" : "Uno desktop")}\nCompute: {ComputeBackend}\nSkia managed/native ABI: 3.119.4\nCanvas: {Surface.ActualWidth:0} × {Surface.ActualHeight:0} logical px\nZoom: {Surface.Zoom * 100:0.0}%\nLast draw submission: {Surface.Renderer.LastRenderMilliseconds:0.00} ms (CPU submission, not GPU time)\nCached tile images: {Surface.Renderer.CachedTiles}\nTile uploads: {Surface.Renderer.TileUploads}\nTone filter builds: {Surface.Renderer.ToneFilterBuilds}\nHistory states: {Session.History.Count}\nHistory target budget: {Session.HistoryBudget / 1024 / 1024} MiB\n\nPhysical GPU timing and device performance are not inferred from these counters.");
+        $"Application: ImageSpace {ProductVersion}\nHost: {(OperatingSystem.IsBrowser() ? "Uno WebAssembly" : "Uno desktop")}\nCompute: {ComputeBackend}\nSkia managed/native ABI: 3.119.4\nCanvas: {Surface.ActualWidth:0} × {Surface.ActualHeight:0} logical px\nZoom: {Surface.Zoom * 100:0.0}%\nLast draw submission: {Surface.Renderer.LastRenderMilliseconds:0.00} ms (CPU submission, not GPU time)\nCached tile images: {Surface.Renderer.CachedTiles}\nTile uploads: {Surface.Renderer.TileUploads}\nTone filter builds: {Surface.Renderer.ToneFilterBuilds}\nHistory states: {Session.History.Count}\nHistory target budget: {Session.HistoryBudget / 1024 / 1024} MiB\n\nPhysical GPU timing and device performance are not inferred from these counters.");
     private Task AboutAsync() => ShowTextAsync("About ImageSpace",
-        "ImageSpace\nIndependent, local-first image editing.\n\nVersion 0.2.0-alpha.1\nBuilt with Uno Platform 6.7.30, .NET 10 and SkiaSharp 3.119.4.\n\nImageSpace: MIT. Uno: Apache-2.0. SkiaSharp: MIT. Skia: BSD-3-Clause. Inter: SIL OFL. See THIRD-PARTY-NOTICES.md.\n\nNo Adobe code, icons, fonts, sample images or cloud services are included. Photoshop is an Adobe trademark. ImageSpace is not affiliated with Adobe.");
+        $"ImageSpace\nIndependent, local-first image editing.\n\nVersion {ProductVersion}\nBuilt with Uno Platform 6.7.30, .NET 10 and SkiaSharp 3.119.4.\n\nImageSpace: MIT. Uno: Apache-2.0. SkiaSharp: MIT. Skia: BSD-3-Clause. Inter: SIL OFL. See THIRD-PARTY-NOTICES.md.\n\nNo Adobe code, icons, fonts, sample images or cloud services are included. Photoshop is an Adobe trademark. ImageSpace is not affiliated with Adobe.");
     private async Task ShowTextAsync(string title, string text)
     {
         await ShowDialogAsync(title, new ScrollViewer
