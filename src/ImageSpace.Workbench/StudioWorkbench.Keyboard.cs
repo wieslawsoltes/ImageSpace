@@ -11,6 +11,21 @@ public sealed partial class StudioWorkbench
     {
         if (e.Handled || _dialogOpen || _busy || XamlRoot is null)
             return;
+        if (e.Key == VirtualKey.Escape)
+        {
+            // Custom Popup menus do not own keyboard focus on every Uno host.
+            // Dismiss those before routing Escape to a canvas transaction. Do not
+            // dismiss dialogs or non-light-dismiss windows through this path.
+            var menus = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
+                .Where(popup => popup.IsOpen && popup.IsLightDismissEnabled).ToArray();
+            if (menus.Length > 0)
+            {
+                foreach (var menu in menus)
+                    menu.IsOpen = false;
+                e.Handled = true;
+                return;
+            }
+        }
         var focus = FocusManager.GetFocusedElement(XamlRoot);
         if (focus is TextBox or PasswordBox || e.OriginalSource is TextBox or PasswordBox)
             return;
@@ -68,10 +83,8 @@ public sealed partial class StudioWorkbench
                 VirtualKey.L => () => AddAdjustment(AdjustmentKind.Levels),
                 VirtualKey.Number0 => Surface.Fit,
                 VirtualKey.Number1 => () => Surface.SetZoom(1),
-                VirtualKey.R => () => { Surface.ShowRulers = !Surface.ShowRulers; Surface.Invalidate(); }
-                ,
-                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); }
-                ,
+                VirtualKey.R => () => { Surface.ShowRulers = !Surface.ShowRulers; Surface.Invalidate(); },
+                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); },
                 VirtualKey.Back => () => Fill(Surface.BackgroundColor),
                 _ => null
             };

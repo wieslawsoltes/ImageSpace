@@ -3,7 +3,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { waitForWorkspace } from './readiness.mjs';
 
 // Independent native-format fixture: one stored UTF-8 manifest, no runtime mutation hook.
-// Ninety-six nonoverlapping editable shapes exercise long lists and off-screen selection.
 function fixture() {
   const id = n => `81350322-2faa-41c6-9000-${String(n).padStart(12,'0')}`;
   const layers = Array.from({length:96},(_,i)=>({metadata:{
@@ -36,26 +35,33 @@ function fixture() {
 }
 
 const state=page=>page.evaluate(()=>globalThis.imageSpaceDiagnostics);
-async function canvas(page) {
-  await expect.poll(()=>page.evaluate(()=>globalThis.imageSpaceControls?.some(c=>c.name==='Image canvas'&&c.width>100))).toBe(true);
-  return page.evaluate(()=>globalThis.imageSpaceControls.find(c=>c.name==='Image canvas'));
+async function control(page,name) {
+  await expect.poll(()=>page.evaluate(n=>globalThis.imageSpaceControls?.some(c=>c.name===n&&c.enabled),name)).toBe(true);
+  return page.evaluate(n=>globalThis.imageSpaceControls.find(c=>c.name===n&&c.enabled),name);
+}
+async function click(page,name) {
+  const c=await control(page,name);
+  await page.mouse.click(c.x+c.width/2,c.y+c.height/2);
 }
 
 test('selecting across a ninety-six-layer drawing retains the UI and never starts an edit',async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('./?test=1',{waitUntil:'domcontentloaded'});
   await waitForWorkspace(page);
-  const chooser=page.waitForEvent('filechooser');
-  await page.keyboard.press('Control+o');
+  // The bootstrap may not yet have assigned keyboard focus to a Uno control.
+  // Open through the actual File menu rather than an unfocused browser shortcut.
+  await click(page,'File');
+  const chooser=page.waitForEvent('filechooser',{timeout:30000});
+  await click(page,'Open…');
   await (await chooser).setFiles({name:'Selection-stress.imagespace',mimeType:'application/x-imagespace',buffer:fixture()});
   await expect.poll(async()=> (await state(page)).layers,{timeout:60000}).toBe(96);
   await expect.poll(async()=> (await state(page)).name).toBe('Selection stress');
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  await page.waitForTimeout(600); // Settle independent startup font/layout work before counting.
+  await page.waitForTimeout(600);
   const before=await state(page), samples=[];
   const targets=[0,47,95,8,63,32,80,15,0,47,95,8,63,32,80,15];
   for (const target of targets) {
-    const c=await canvas(page), view=await state(page);
+    const c=await control(page,'Image canvas'), view=await state(page);
     const x=(target%8)*128+64, y=Math.floor(target/8)*64+32;
     await page.mouse.click(c.x+view.panX+x*view.zoom,c.y+view.panY+y*view.zoom);
     await expect.poll(async()=> (await state(page)).activeLayer).toBe(`Tile ${String(target).padStart(2,'0')}`);

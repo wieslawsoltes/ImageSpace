@@ -78,11 +78,18 @@ test('applying a disabled mask is unavailable and its effect can be retained by 
   await expect.poll(async () => (await state(page)).mask).toBe(true);
   await menu(page, 'Layer', 'Disable mask');
   await expect.poll(async () => (await state(page)).maskEnabled).toBe(false);
+  const disabled = await state(page);
   await click(page, 'Layer');
   await expect.poll(() => page.evaluate(() => globalThis.imageSpaceControls?.some(c => c.name === 'Apply layer mask' && !c.enabled))).toBe(true);
   await page.keyboard.press('Escape');
+  // Wait for dismissal instead of using the preceding menu's sampled coordinates
+  // to click a same-named item while the replacement popup is still arranging.
+  await expect.poll(() => page.evaluate(() => globalThis.imageSpaceControls?.some(c => c.name === 'Apply layer mask')),
+    {message:'Escape must dismiss the custom Layer menu'}).toBe(false);
+  expect((await state(page)).history).toBe(disabled.history);
   await menu(page, 'Layer', 'Enable mask');
   await expect.poll(async () => (await state(page)).maskEnabled).toBe(true);
+  await expect.poll(async () => (await state(page)).history).toBe(disabled.history + 1);
   await menu(page, 'Layer', 'Apply layer mask');
   await expect.poll(async () => (await state(page)).mask).toBe(false);
 });
