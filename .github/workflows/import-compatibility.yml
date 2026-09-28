@@ -24,7 +24,7 @@ jobs:
           encoded=''.join(Path(f'.github/compatibility/{i}.b64').read_text() for i in range(3))
           patch=lzma.decompress(base64.b64decode(encoded,validate=True))
           assert len(patch)==198363
-          assert hashlib.sha256(patch).hexdigest()=='1648694f2fbdd7fb05a2ae936f9f37d0e50119db4b3ea917efde1decf4528b81ed'
+          assert hashlib.sha256(patch).hexdigest()=='60594e64d2e5aecdf2bf6ef06533afc82ba1084e246e2628b03691e4c144f1a1'
           Path('/tmp/imagespace-compatibility.patch').write_bytes(patch)
           PY
           git apply --check /tmp/imagespace-compatibility.patch
