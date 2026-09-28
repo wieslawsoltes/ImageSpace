@@ -15,7 +15,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Clone | Alt-click source, active raster layer, stroke-start source snapshot |
 | Dodge/burn/smudge | Basic kernels; not healing/content-aware or advanced Photoshop tonal tools |
 | Fill/gradient | Foreground/background, active pixel layer, linear gradient |
-| Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather and alpha selection |
+| Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather, alpha selection, expand/contract/border/smooth (square neighborhoods; preserves soft coverage) |
 | Masks | Pixel/text/shape/adjustment coverage masks, density, feather, selection-aware pixel tools and view-only grayscale/overlay inspection; groups and unlinked mask transforms remain unsupported |
 | Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; no groups or clipping chains |
 | Type | Editable multiline Inter text, size, weight and color; no complete typography/font-discovery UI |
@@ -28,7 +28,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Curves | Four channels, up to sixteen points per channel, shape-preserving cubic interpolation, numeric/keyboard edits, presets and live transactional dragging |
 | Levels | Four channels, input/output endpoints, gamma, draggable histogram handles, numeric edits and presets |
 | Native archive | Version 1–3 reader; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
-| PSD | Bounded PSD v1 RGB/8 raw/PackBits raster layers, offsets, visibility, opacity and blend keys; not lossless Photoshop roundtripping |
+| PSD | Bounded PSD v1 RGB/8 raw/PackBits/ZIP/ZIP-prediction channels; Unicode names, DPI, raster offsets/visibility/opacity/blend keys and placed user masks; not lossless Photoshop roundtripping |
 | PSB/high-bit/CMYK PSD | Rejected rather than silently interpreted as equivalent |
 | PNG/JPEG/WebP | Raster import/export; JPEG is composited against white |
 | BMP/GIF | Codec-dependent static raster import; no animation document/timeline |
@@ -45,7 +45,7 @@ Curves and Levels are independent algorithms and UI components, not a claim of b
 
 ## File-preservation policy
 
-Always retain original imports. A source PSD using unsupported masks, effects, groups, smart objects or adjustments can differ from its Photoshop composite after raster-layer import. Import warns about that boundary. Native Save does not overwrite the original PSD.
+Always retain original imports. A source PSD using unsupported vector/combined mask semantics, effects, groups, smart objects or adjustments can differ from its Photoshop composite after raster-layer import. Import warns about that boundary. Native Save does not overwrite the original PSD.
 
 PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone-only documents use manifest version 2. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require version 3, preventing older readers from silently discarding those semantics.
 
@@ -54,3 +54,7 @@ Working limits are 8192 pixels per side, 16 megapixels per surface, 128 layers a
 ## Validation
 
 Engine and regression suites exercise model, parser and actual Skia pixel output. Browser tests operate real Uno controls through pointer/keyboard/file events and inspect screenshots. The Pages workflow verifies the deployed source SHA and repeats browser acceptance against the public URL. These checks are evidence for the tested behavior, not proof of complete Photoshop parity or production readiness.
+
+## CPU and allocation improvements
+
+Tile-native fills/imports, contiguous RGBA rows, sparse histogram scans, pooled row-based bilinear resizing, crop and flip, direct native Skia pixel spans, and streaming archive pixel entries. Correctness is checked against scalar implementations, independent PSD fixtures, archive/mask regressions and actual browser interactions. Timing results are CPU-only, workload-specific and retained by CI; no claim of physical GPU speed follows from them.

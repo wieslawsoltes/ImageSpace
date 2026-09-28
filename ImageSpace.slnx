@@ -18,4 +18,8 @@
     <Project Path="tests/ImageSpace.MaskTests/ImageSpace.MaskTests.csproj" />
     <Project Path="tests/ImageSpace.MaskEditingTests/ImageSpace.MaskEditingTests.csproj" />
   </Folder>
+  <Folder Name="/Compatibility/">
+    <Project Path="tests/ImageSpace.CompatibilityTests/ImageSpace.CompatibilityTests.csproj" />
+    <Project Path="tests/ImageSpace.Benchmarks/ImageSpace.Benchmarks.csproj" />
+  </Folder>
 </Solution>

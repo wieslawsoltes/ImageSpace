@@ -19,7 +19,7 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a single monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.1.0-alpha.1 — functional initial development release, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.2.0-alpha.1 — expanded compatibility and performance release, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
@@ -28,7 +28,7 @@ Eleven reusable .NET libraries separate the document model, copy-on-write tiles,
 | Area | Implemented behavior |
 | --- | --- |
 | Paint | Pressure-aware brush, pencil, eraser, clone, basic smudge/dodge/burn; size, hardness, opacity and flow |
-| Selection | Rectangle, ellipse, lasso, contiguous color, add/subtract/intersect, invert, feather and alpha selection |
+| Selection | Rectangle, ellipse, lasso, contiguous color, add/subtract/intersect, invert, feather, alpha selection, expand/contract/border/smooth |
 | Layers | Sparse pixels, editable multiline type, rectangle/ellipse shapes, masks, sixteen blend modes, opacity, visibility, locks, duplicate/reorder and rasterization |
 | Geometry | Eight-handle scaling, rotation, constrained motion, numeric properties, non-destructive crop and canvas/image sizing |
 | Tone | **Curves and Levels**, composite RGB and separate color channels, draggable graphs, numeric/keyboard editing, presets and live undoable previews |
@@ -50,13 +50,19 @@ The shared compositor draws revision-cached tiles, text, shapes, blends, masks a
 
 An independently reusable browser WebGPU module accelerates invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold and posterize. Output returns to the authoritative tile model for undo and native saving. Unsupported kernels/adapters use the CPU path. This is **not a GPU-only engine**, and software-adapter CI does not establish physical-GPU performance.
 
-The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** and **SkiaSharp 3.119.2**. Managed/native Skia ABI compatibility is intentional; independently changing only one side is not a supported upgrade.
+The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** and **SkiaSharp 3.119.4**. Managed/native Skia ABI compatibility is intentional; independently changing only one side is not a supported upgrade.
 
 ## Adjustment-mask editing
 
 Pixel, type, shape and adjustment masks share the same editing target pipeline. The mask inspector provides density, feather, inversion, enable/disable and view-only grayscale/red-overlay inspection. Painting and filters modify authored coverage, never the underlying layer pixels. Density/feather remain independently editable. Masks currently share their layer transform; groups and independent mask transforms are not yet supported.
 
 [Mask editing architecture and verification](docs/mask-editing.md) covers alpha compositing, archive version 3, regression coverage and the exact supported boundary.
+
+## Compatibility and measured CPU performance
+
+The 0.2 alpha adds section-bounded PSD decoding, compressed export, Unicode names, resolution and user-mask import; selection morphology; tile/row raster operations; and streaming native archives. [Implementation and compatibility details](docs/compatibility-performance.md) describe the exact contracts and limits.
+
+A reproducible same-process Release benchmark compares the frozen pre-optimization implementation against the new paths. It reports median timings and allocations rather than claiming hardware GPU acceleration. Run `dotnet run --project tests/ImageSpace.Benchmarks -c Release`; CI retains `performance-results.json`.
 
 ## Reusable libraries
 
@@ -132,7 +138,7 @@ Build, desktop, Pages, tag-release and formatting workflows are under `.github/w
 
 **Use `.imagespace` for editable roundtrips and retain original imports.** Native manifest version 2 retains Curves/Levels; the reader remains compatible with version 1. An older version-1-only application must reject the newer tone document instead of silently changing its appearance.
 
-PSD import supports version-1 RGB/8 raw or PackBits raster data, not smart objects, text metadata, groups, profiles, masks or Photoshop adjustments. PSD exports rasterize type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
+PSD import supports version-1 RGB/8 raw, PackBits, ZIP and row-predicted ZIP channels, Unicode layer names, resolution, and placed user masks with density/feather metadata. Smart objects, editable Photoshop type/adjustment metadata, groups, clipping chains and ICC profiles remain outside the interchange boundary. PSD exports rasterize type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
 
 Working limits: 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. These are safety limits, not guarantees that all combinations fit a browser tab. Local recovery covers the active document and is not a cloud backup.
 

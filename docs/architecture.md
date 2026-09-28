@@ -70,7 +70,7 @@ This tradeoff favors edit-model consistency and reusable public APIs over a misl
 
 ## Dependency policy
 
-The baseline was selected against the stable Uno package on September 27, 2026: Uno SDK 6.7.30 and .NET SDK 10.0.401. Managed SkiaSharp and the native Skia implementation supplied by the Uno rendering stack must stay ABI-compatible. The pinned 3.119.2 line is intentional; independently updating to a newer Skia major is not considered a safe upgrade.
+The baseline was selected against the stable Uno package on September 27, 2026: Uno SDK 6.7.30 and .NET SDK 10.0.401. Managed SkiaSharp and the native Skia implementation supplied by the Uno rendering stack must stay ABI-compatible. The pinned 3.119.4 line is intentional; independently updating to a newer Skia major is not considered a safe upgrade.
 
 References:
 - Uno SDK: https://www.nuget.org/packages/Uno.Sdk/6.7.30
