@@ -2,7 +2,7 @@ name: Mask regressions
 on:
   push:
     branches: [main, 'feat/**']
-    paths: ['src/**', 'tests/ImageSpace.MaskTests/**', '.github/workflows/masks.yml']
+    paths: ['src/**', 'tests/ImageSpace.MaskTests/**', 'tests/ImageSpace.MaskEditingTests/**', '.github/workflows/masks.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,12 +15,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - run: dotnet run --project tests/ImageSpace.MaskTests -c Release
+      - run: |
+          dotnet run --project tests/ImageSpace.MaskTests -c Release
+          dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ImageSpace-mask-regressions
-          path: artifacts/mask-tests.json
+          path: artifacts/*tests.json

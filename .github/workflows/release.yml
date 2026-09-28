@@ -14,7 +14,7 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - uses: actions/setup-node@v7
@@ -29,6 +29,8 @@ jobs:
           python3 scripts/fetch-assets.py
           dotnet run --project tests/ImageSpace.Tests -c Release
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
+          dotnet run --project tests/ImageSpace.MaskTests -c Release
+          dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
             case "$project" in */ImageSpace.App/*) continue ;; esac
@@ -41,7 +43,7 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:browser
           mkdir -p site/screenshots
-          cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
+          cp artifacts/screenshots/*.png site/screenshots/
           npm --prefix packages/webgpu version "$VERSION" --no-git-tag-version --allow-same-version
           npm run pack:webgpu
           git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
@@ -74,7 +76,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - shell: bash
