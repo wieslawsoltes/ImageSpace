@@ -14,7 +14,15 @@ Foreground and background swatches have independent displayed-value caches. Both
 
 Diagnostics are read-only and periodically sampled. Numeric affine tests wait for the requested model value of each field before calculating the next handle position. An already-correct angle is not evidence that a later Y-position edit has reached the diagnostics snapshot. The old test clicked thirty document pixels away from the current handle; its trace confirmed a normal move, not a broken resize. Assertions still verify both scale axes, fixed X/Y anchor, one history state and unchanged authored pixels.
 
-Tall Curves/Levels inspectors legitimately reduce the layer list's viewport. The list now has the automation name `Layer list`. Tests reach off-screen layers through real wheel input instead of assuming every row is visible. This exercises the actual scrolling and retained-row behavior; it does not expose a JavaScript document-mutation endpoint.
+Tall Curves/Levels inspectors legitimately reduce the layer list's viewport. The list has the automation name `Layer list`. Tests reach off-screen layers through real wheel input instead of assuming every row is visible. This exercises the actual scrolling and retained-row behavior; it does not expose a JavaScript document-mutation endpoint.
+
+### Sample freshness during scrolling
+
+The histogram regression exposed an additional sequencing error: the test sent a large wheel movement and immediately consumed a pre-scroll control snapshot. The subsequent pointer click selected Footer rule rather than Description. A control being visible in a sampled array does not establish that its coordinates remain valid during animation.
+
+`tests/browser/layer-list.mjs` waits for three distinct consecutive diagnostics publications with identical viewport and visible-row geometry. Multiple reads of the same array never count as new samples. Changed bounds or a hidden layer list reset stability. The helper waits after every real wheel step, returns the settled row bounds, and fails explicitly at an unreachable target or bounded scroll limit. Selection then uses one pointer click and verifies the exact resulting layer name. It does not retry selection until a wrong click happens to be corrected.
+
+The browser histogram case repeats the tall/small inspector and Channels/Layers transitions three more times. It continues to require unchanged tone/channel histogram build counts. Six deterministic Node tests cover stale publications, moving bounds, hidden lists, viewport resizing, input sequencing and bounded failure. They execute the same browser-side observer in an isolated JavaScript realm and run before the real browser suite through `npm run test:browser`.
 
 A separate fixture imports a standards-shaped native archive containing 96 nonoverlapping editable shape layers. Real canvas clicks select targets across the full layer stack. Assertions require no new controls, history states, content revisions, image compositing submissions or hidden histograms after initialization. Scrolling may legitimately draw newly exposed row thumbnails, so the large-list test does not confuse those thumbnail paints with expensive full-document compositing.
 

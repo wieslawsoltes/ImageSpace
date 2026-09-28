@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {waitForWorkspace} from './readiness.mjs';
 import {decodePng} from './png.mjs';
+import {revealLayer} from './layer-list.mjs';
 
 const state = page => page.evaluate(() => globalThis.imageSpaceDiagnostics);
 async function control(page,name) {
@@ -11,21 +12,8 @@ async function control(page,name) {
 async function click(page,name) { const c=await control(page,name); await page.mouse.click(c.x+c.width/2,c.y+c.height/2); }
 async function menu(page,name,item) { await click(page,name); await click(page,item); }
 async function choose(page,name) {
-  const visible = () => page.evaluate(n => globalThis.imageSpaceControls?.some(c =>
-    c.name===n && c.type==='StudioButton' && c.enabled && c.height>=28),name);
-  if (!await visible()) {
-    const list=await control(page,'Layer list');
-    await page.mouse.move(list.x+list.width/2,list.y+list.height/2);
-    await page.mouse.wheel(0,-10000);
-    // A tall inspector legitimately shows fewer rows. Find off-screen targets by
-    // real scrolling instead of assuming all layer buttons fit in the viewport.
-    await expect.poll(async()=>{
-      if (await visible()) return true;
-      await page.mouse.wheel(0,Math.max(32,Math.floor(list.height/2)));
-      return false;
-    },{intervals:[250],message:`Scroll the layer list to ${name}`}).toBe(true);
-  }
-  await click(page,name);
+  const target = await revealLayer(page, name);
+  await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
   await expect.poll(async()=> (await state(page)).activeLayer).toBe(name);
 }
 async function world(page,x,y) { const c=await control(page,'Image canvas'),s=await state(page);return {x:c.x+s.panX+x*s.zoom,y:c.y+s.panY+y*s.zoom}; }
@@ -126,6 +114,14 @@ test('tone and channel histograms are deferred, bounded and reused when their im
   await click(page,'Red histogram');await click(page,'Green histogram');await page.waitForTimeout(500);
   expect((await state(page)).channelHistogramBuilds).toBe(1);
   await click(page,'Layers');await choose(page,'Description');await page.waitForTimeout(500);
+  // Repeat the large/small inspector and hidden/visible layer-list transitions.
+  // Every requested layer must be selected by a single actual pointer click.
+  for (let round = 0; round < 3; round++) {
+    await choose(page,'Levels');
+    await click(page,'Channels');await click(page,'Layers');
+    await choose(page,'Description');
+  }
+  expect((await state(page)).toneHistogramBuilds).toBe(before.toneHistogramBuilds);
   expect((await state(page)).channelHistogramBuilds).toBe(1);
   await mkdir('artifacts/screenshots',{recursive:true});
   const shot=await page.screenshot({path:'artifacts/screenshots/retained-inspectors.png'});
