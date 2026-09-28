@@ -21,7 +21,8 @@ internal static partial class Program
                     layer.Pixels = surface;
                 var document = new ImageDocument(surface.Width, surface.Height)
                 {
-                    Layers = [layer], ActiveLayerId = layer.Id
+                    Layers = [layer],
+                    ActiveLayerId = layer.Id
                 };
                 var restored = DocumentArchive.Load(DocumentArchive.Save(document)).ActiveLayer!;
                 var actual = isMask ? restored.Mask! : restored.Pixels!;
