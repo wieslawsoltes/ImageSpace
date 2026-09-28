@@ -7,8 +7,7 @@ public sealed partial class StudioWorkbench
     private void ApplyLayerMask() => Run(() =>
     {
         Session.ApplyLayerMask(Surface.Renderer.BakeLayerMask);
-        Surface.MaskPreview = MaskPreviewMode.Composite;
-        Surface.Invalidate();
+        Surface.SetMaskPreview(MaskPreviewMode.Composite);
     });
 
     private const string MaskApplicationHelp = """
@@ -34,9 +33,9 @@ public sealed partial class StudioWorkbench
 
         DIRECT LAYER DRAWING
 
-        Opaque Normal layers without an effective mask avoid a per-layer offscreen surface.
-        Layers with opacity, other blend modes, or effective masks retain isolated compositing.
-        The document is always isolated from the workspace and export background.
+        Normal layers with unit layer opacity and no effective mask avoid a per-layer offscreen
+        surface. Other blends, fractional layer opacity and effective masks retain isolated
+        compositing. The document remains isolated from the workspace and export background.
 
         Reusable renderer counters report direct and isolated layer draws. They are CPU path
         counters, not GPU timings. Software-adapter tests do not certify physical GPU performance.
