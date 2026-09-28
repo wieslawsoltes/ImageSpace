@@ -28,10 +28,14 @@ public sealed partial class EditorSession
         document.Validate();
         Document = document;
     }
-    public void Notify()
+    /// <summary>Changes requiring recovery; active-target selection and saving do not advance it.</summary>
+    public long ContentRevision { get; private set; }
+    public void Notify(EditorChange change = EditorChange.Document)
     {
+        if (!Enum.IsDefined(change)) throw new ArgumentOutOfRangeException(nameof(change));
         Revision++;
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (change == EditorChange.Document) ContentRevision++;
+        Changed?.Invoke(this, EditorChangedEventArgs.For(change));
     }
     public void Begin(string name)
     {
@@ -105,18 +109,20 @@ public sealed partial class EditorSession
     }
     public void MarkSaved()
     {
+        if (_savedVersion == _version) return;
         _savedVersion = _version;
-        Notify();
+        Notify(EditorChange.SavedState);
     }
     public void SelectLayer(Guid id)
     {
         if (IsInTransaction)
             return;
+        if (Document.ActiveLayerId == id && !Document.EditMask) return;
         if (Document.Layers.Any(l => l.Id == id))
         {
             Document.ActiveLayerId = id;
             Document.EditMask = false;
-            Notify();
+            Notify(EditorChange.ActiveTarget);
         }
     }
     public Layer AddLayer(string name = "Layer")

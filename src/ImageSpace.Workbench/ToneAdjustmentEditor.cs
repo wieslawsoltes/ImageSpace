@@ -4,11 +4,11 @@ using SkiaSharp;
 namespace ImageSpace.Workbench;
 
 /// <summary>Transaction-aware tonal inspector. A complete pointer gesture is one undo state.</summary>
-public sealed class ToneAdjustmentEditor : UserControl
+public sealed class ToneAdjustmentEditor : UserControl, IDisposable
 {
-    private readonly EditorSession _session;
-    private readonly Guid _layerId;
-    private readonly ImageRenderer? _renderer;
+    private EditorSession _session;
+    private Guid _layerId;
+    private ImageRenderer? _renderer;
     private readonly Action _preview;
     private readonly AdjustmentKind _kind;
     private readonly StackPanel _body = new() { Spacing = 8 };
@@ -32,7 +32,14 @@ public sealed class ToneAdjustmentEditor : UserControl
     public Guid LayerId => _layerId;
     public AdjustmentKind Kind => _kind;
     public event Action<string>? Error;
-    private Layer? Current => _session.Document.Layers.FirstOrDefault(layer => layer.Id == _layerId);
+    private Layer? Current => _session.Document.ActiveLayerId == _layerId ? _session.Document.ActiveLayer : null;
+    private readonly DocumentPreviewCache _histogramCache = new();
+    private readonly DispatcherTimer _histogramTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly Dictionary<Guid, ToneChannel> _selectedChannels = [];
+    private long _shownHistogramBuild = -1;
+    private ToneChannel _shownHistogramChannel;
+    private bool _loaded, _disposed;
+    public long HistogramBuilds => _histogramCache.Builds;
 
     public ToneAdjustmentEditor(EditorSession session, Guid layerId, ImageRenderer? renderer, Action preview)
     {
@@ -108,7 +115,35 @@ public sealed class ToneAdjustmentEditor : UserControl
         _body.Children.Add(Studio.Row(_kind == AdjustmentKind.Curves ? _delete :
             new StudioButton("Reset all levels", () => Edit("Reset Levels", layer => layer.Levels = new())) { Width = 123 }, _previewButton));
         _body.Children.Add(Studio.Label("Sampled input histogram · non-destructive", 10, "#989898"));
-        Unloaded += (_, _) => { _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit(); };
+        _histogramTimer.Tick += (_, _) => UpdateHistogram();
+        Loaded += (_, _) => { _loaded = true; RequestHistogram(); };
+        Unloaded += (_, _) => { _loaded = false; _histogramTimer.Stop(); _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit(); };
+        RefreshFromDocument();
+    }
+
+    public void ResetSession(EditorSession session)
+    {
+        _histogramTimer.Stop();
+        _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit();
+        _session = session; _layerId = Guid.Empty;
+        _selectedChannels.Clear(); _histogramCache.Clear(); _shownHistogramBuild = -1;
+    }
+
+    public void Bind(EditorSession session, Guid layerId, ImageRenderer? renderer)
+    {
+        if (!ReferenceEquals(_session, session) || _layerId != layerId)
+        {
+            _histogramTimer.Stop();
+            _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit();
+            if (ReferenceEquals(_session, session)) _selectedChannels[_layerId] = _channel;
+            else _selectedChannels.Clear();
+            _session = session;
+            _layerId = layerId;
+            _channel = _selectedChannels.GetValueOrDefault(layerId);
+            _shownHistogramBuild = -1;
+            _curve.SetHistogram([]); _levels.SetHistogram([]);
+        }
+        _renderer = renderer;
         RefreshFromDocument();
     }
 
@@ -144,22 +179,51 @@ public sealed class ToneAdjustmentEditor : UserControl
             };
             _curve.Curve = layer.Curves.GetChannel(_channel);
             _levels.Value = layer.Levels.GetChannel(_channel);
-            _previewButton.Content = Studio.Label(layer.Visible ? "Preview ✓" : "Preview off", 11);
+            _previewButton.SetLabel(layer.Visible ? "Preview ✓" : "Preview off");
+            _previewButton.SetName("Adjustment preview");
             RefreshNumbers();
-            if (_renderer is not null)
-            {
-                var document = _session.Document;
-                var index = document.Layers.IndexOf(layer);
-                var prefix = new ImageDocument(document.Width, document.Height) { Layers = document.Layers.Take(index).ToList() };
-                var pixels = _renderer.RasterizePreview(prefix, 192);
-                var channel = _channel switch { ToneChannel.Red => 0, ToneChannel.Green => 1, ToneChannel.Blue => 2, _ => -1 };
-                var histogram = RasterOperations.Histogram(pixels, channel);
-                _curve.SetHistogram(histogram);
-                _levels.SetHistogram(histogram);
-            }
+            RequestHistogram();
         }
         catch (Exception error) { Error?.Invoke(error.Message); }
         finally { _refreshing = false; }
+    }
+
+    private void RequestHistogram()
+    {
+        if (_disposed || !_loaded || _renderer is null || _histogramTimer.IsEnabled) return;
+        _histogramTimer.Start();
+    }
+
+    private void UpdateHistogram()
+    {
+        _histogramTimer.Stop();
+        if (_disposed || !_loaded || _renderer is null || Current is not { } layer || _session.Document.EditMask) return;
+        // Show and edit controls immediately. Defer only this optional sampled preview,
+        // coalescing rapid selection/typing and waiting until an active gesture finishes.
+        if (_session.IsInTransaction) { RequestHistogram(); return; }
+        try
+        {
+            var document = _session.Document;
+            var pixels = _histogramCache.Get(document, document.Layers.IndexOf(layer), 192, _renderer);
+            if (_shownHistogramBuild == _histogramCache.Builds && _shownHistogramChannel == _channel) return;
+            var channel = _channel switch { ToneChannel.Red => 0, ToneChannel.Green => 1, ToneChannel.Blue => 2, _ => -1 };
+            var histogram = RasterOperations.Histogram(pixels, channel);
+            _curve.SetHistogram(histogram);
+            _levels.SetHistogram(histogram);
+            _shownHistogramBuild = _histogramCache.Builds;
+            _shownHistogramChannel = _channel;
+        }
+        catch (Exception error) { Error?.Invoke(error.Message); }
+    }
+
+    public new void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _histogramTimer.Stop();
+        _curve.CancelEdit(); _levels.CancelEdit(); CancelEdit();
+        _histogramCache.Dispose();
+        _selectedChannels.Clear();
     }
 
     private void RefreshNumbers()

@@ -11,8 +11,19 @@ public sealed partial class ImageRenderer : IDisposable
     private readonly AdjustmentFilterCache _adjustments = new();
     private readonly MaskFilterCache _masks = new();
     private SKTypeface? _typeface;
+    public long TypefaceRevision { get; private set; }
+    /// <summary>Copy a font into a separate cache-owning renderer on its owning thread.</summary>
+    public void CopyTypefaceFrom(ImageRenderer source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source._typeface is null) { _typeface?.Dispose(); _typeface = null; TypefaceRevision++; return; }
+        using var stream = source._typeface.OpenStream();
+        SetTypeface(SKTypeface.FromStream(stream)
+            ?? throw new InvalidOperationException("Unable to copy the preview typeface."));
+    }
     public double LastRenderMilliseconds { get; private set; }
     public long TileUploads { get; private set; }
+    public long DocumentDraws { get; private set; }
     public long ToneFilterBuilds => _adjustments.ToneFilterBuilds;
     public long MaskFilterBuilds => _masks.Builds;
     public long MaskSourceBuilds => _masks.SourceBuilds;
@@ -31,10 +42,12 @@ public sealed partial class ImageRenderer : IDisposable
     {
         _typeface?.Dispose();
         _typeface = typeface;
+        TypefaceRevision++;
     }
 
     public void Draw(SKCanvas canvas, ImageDocument document)
     {
+        DocumentDraws++;
         var started = Stopwatch.GetTimestamp();
         var save = canvas.Save();
         try
@@ -82,7 +95,7 @@ public sealed partial class ImageRenderer : IDisposable
         }
     }
 
-    public void DrawLayer(SKCanvas canvas, Layer layer, bool ignoreVisibility = false, bool ignoreOpacity = false)
+    public void DrawLayer(SKCanvas canvas, Layer layer, bool ignoreVisibility = false, bool ignoreOpacity = false, bool ignoreTransform = false)
     {
         if ((!ignoreVisibility && !layer.Visible) || layer.Kind == LayerKind.Adjustment)
             return;
@@ -100,7 +113,7 @@ public sealed partial class ImageRenderer : IDisposable
                 TransY = transform.M32,
                 Persp2 = 1
             };
-            canvas.Concat(in matrix);
+            if (!ignoreTransform) canvas.Concat(in matrix);
             var masked = layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0;
             var direct = EnableDirectLayerDrawing && !masked &&
                 (ignoreOpacity || (layer.Opacity == 1 && layer.Blend == LayerBlend.Normal));

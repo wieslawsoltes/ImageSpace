@@ -19,8 +19,9 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     {
         public Action<SKCanvas, Size>? Draw; protected override void RenderOverride(SKCanvas canvas, Size area) => Draw?.Invoke(canvas, area);
     }
+    private readonly DrawingCanvas _imageCanvas = new() { IsHitTestVisible = false };
     private readonly DrawingCanvas _canvas = new(); private readonly BrushEngine _brush = new(); private EditorSession _session;
-    private EditorTool _tool; private string _gesture = ""; private Vector2 _start, _last, _startPan, _cursor; private Layer? _original; private int _handle = -1; private readonly List<Vector2> _lasso = []; private Vector2? _cloneSource; private (Vector2 A, Vector2 B)? _crop; private bool _fitPending = true;
+    private EditorTool _tool; private string _gesture = ""; private string _pendingTransform = ""; private Vector2 _start, _last, _startPan, _cursor; private Layer? _original; private int _handle = -1; private readonly List<Vector2> _lasso = []; private Vector2? _cloneSource; private (Vector2 A, Vector2 B)? _crop; private bool _fitPending = true;
     private readonly DispatcherTimer _ants = new() { Interval = TimeSpan.FromMilliseconds(140) }; private float _dashOffset;
     public ImageRenderer Renderer { get; } = new();
     public EditorSession Session
@@ -41,9 +42,10 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     {
         get => _tool; set
         {
+            if (_tool == value && _gesture == "") return;
             CancelGesture();
             _tool = value;
-            Invalidate();
+            InvalidateOverlay();
         }
     }
     public BrushSettings Brush { get; set; } = new(); public new Rgba32 Foreground { get; set; } = new(54, 145, 230); public Rgba32 BackgroundColor { get; set; } = Rgba32.White;
@@ -68,9 +70,13 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         IsTabStop = true;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
-        Content = _canvas;
+        var host = new Grid();
+        host.Children.Add(_imageCanvas);
+        host.Children.Add(_canvas);
+        Content = host;
         AutomationProperties.SetName(this, "Image canvas");
-        _canvas.Draw = Render;
+        _imageCanvas.Draw = RenderImage;
+        _canvas.Draw = RenderOverlay;
         _canvas.PointerPressed += Pressed;
         _canvas.PointerMoved += Moved;
         _canvas.PointerReleased += Released;
@@ -79,21 +85,28 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         _canvas.PointerCaptureLost += (_, _) => { if (_gesture != "") CancelGesture(); };
         _canvas.DoubleTapped += (_, e) => { if (!_session.Document.EditMask && _session.Document.ActiveLayer is { Kind: LayerKind.Text } layer) TextEditRequested?.Invoke(layer); e.Handled = true; };
         SizeChanged += (_, _) => { if (_fitPending && ActualWidth > 50 && ActualHeight > 50) Fit(); Invalidate(); };
-        _ants.Tick += (_, _) => { if (_session.Document.Selection is not null || _gesture == "selection") { _dashOffset += 1; Invalidate(); } };
+        _ants.Tick += (_, _) => { if (_session.Document.Selection is not null || _gesture == "selection") { _dashOffset += 1; InvalidateOverlay(); } };
         Loaded += (_, _) => _ants.Start();
         Unloaded += (_, _) => _ants.Stop();
     }
     private void Changed(object? sender, EventArgs e)
     {
+        if (e is EditorChangedEventArgs { Change: EditorChange.SavedState }) return;
+        var previousPreview = _maskPreview;
         if (!_session.Document.EditMask || _session.Document.ActiveLayer?.Mask is null ||
             _previewLayerId != _session.Document.ActiveLayerId)
         {
             _maskPreview = MaskPreviewMode.Composite;
             _previewLayerId = _session.Document.ActiveLayerId;
         }
-        Invalidate();
+        if (e is EditorChangedEventArgs { Change: EditorChange.ActiveTarget } && previousPreview == MaskPreviewMode.Composite)
+            InvalidateOverlay();
+        else Invalidate();
     }
-    public void Invalidate() => _canvas.Invalidate();
+    /// <summary>Invalidate scene and interaction drawings for actual content/view changes.</summary>
+    public void Invalidate() { _imageCanvas.Invalidate(); _canvas.Invalidate(); }
+    /// <summary>Cursor, selection ants and handles do not re-submit the image compositor.</summary>
+    public void InvalidateOverlay() => _canvas.Invalidate();
     public Vector2 ToDocument(Vector2 p) => (p - Pan) / Zoom;
     public Vector2 ToScreen(Vector2 p) => p * Zoom + Pan;
     public void Fit()
@@ -172,9 +185,16 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 }
                 if (layer is null || layer.Locked)
                     return;
-                _original = layer.Snapshot();
+                // A click selects; only a real drag takes COW history snapshots.
+                // This is geometry-only read state, not an editable pixel clone.
+                _original = new Layer
+                {
+                    X = layer.X, Y = layer.Y, ScaleX = layer.ScaleX, ScaleY = layer.ScaleY,
+                    Rotation = layer.Rotation, Width = layer.Width, Height = layer.Height,
+                    Kind = layer.Kind, Mask = layer.Mask, MaskLinked = layer.MaskLinked, MaskPlacement = layer.MaskPlacement
+                };
                 var targetName = IsIndependentMask(layer) ? "mask" : "layer";
-                _session.Begin((_handle == 8 ? "Rotate " : _handle >= 0 ? "Transform " : "Move ") + targetName);
+                _pendingTransform = (_handle == 8 ? "Rotate " : _handle >= 0 ? "Transform " : "Move ") + targetName;
                 _gesture = _handle == 8 ? "rotate" : _handle >= 0 ? "resize" : "move";
             }
             else if (Tool is EditorTool.Marquee or EditorTool.EllipseSelect or EditorTool.Lasso)
@@ -243,7 +263,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
             }
             _canvas.CapturePointer(e.Pointer);
             e.Handled = true;
-            Invalidate();
+            if (_session.IsInTransaction) Invalidate(); else InvalidateOverlay();
         }
         catch (Exception ex) { CancelGesture(); Status?.Invoke(ex.Message); }
     }
@@ -254,6 +274,12 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         var world = ToDocument(_cursor);
         _last = world;
         var layer = _session.Document.ActiveLayer;
+        if (_pendingTransform.Length != 0)
+        {
+            if (Vector2.Distance(world, _start) * Zoom < 1) { InvalidateOverlay(); return; }
+            try { _session.Begin(_pendingTransform); _pendingTransform = ""; }
+            catch (Exception error) { CancelGesture(); Status?.Invoke(error.Message); return; }
+        }
         if (_gesture == "pan")
         {
             Pan = _startPan + _cursor - _start;
@@ -312,9 +338,9 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         }
         else if (_gesture == "crop")
             _crop = (_start, world);
-        Invalidate();
-        if (_gesture != "")
-            e.Handled = true;
+        if (_gesture is "pan" or "move" or "resize" or "rotate" or "paint" or "shape") Invalidate();
+        else InvalidateOverlay();
+        if (_gesture != "") e.Handled = true;
     }
     private void Released(object sender, PointerRoutedEventArgs e)
     {
@@ -341,11 +367,12 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         }
         catch (Exception ex) { _session.Cancel(); Status?.Invoke(ex.Message); }
         _gesture = "";
+        _pendingTransform = "";
         _original = null;
         _handle = -1;
         _brush.End();
         _canvas.ReleasePointerCapture(e.Pointer);
-        Invalidate();
+        InvalidateOverlay();
         e.Handled = true;
         if (gesture == "shape" && layer?.Kind == LayerKind.Text)
             TextEditRequested?.Invoke(layer);
@@ -389,13 +416,14 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     public void CancelGesture()
     {
         _gesture = "";
+        _pendingTransform = "";
         _original = null;
         _handle = -1;
         _crop = null;
         _brush.End();
         _session.Cancel();
         _canvas.ReleasePointerCaptures();
-        Invalidate();
+        InvalidateOverlay();
     }
     private static SelectionCombine Combine(VirtualKeyModifiers keys) => (keys & VirtualKeyModifiers.Shift) != 0 ? ((keys & VirtualKeyModifiers.Menu) != 0 ? SelectionCombine.Intersect : SelectionCombine.Add) : (keys & VirtualKeyModifiers.Menu) != 0 ? SelectionCombine.Subtract : SelectionCombine.Replace;
     private Layer? HitLayer(Vector2 world)

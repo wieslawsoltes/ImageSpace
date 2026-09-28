@@ -63,7 +63,7 @@ Build the standalone browser package with:
 
 ```sh
 npm run pack:webgpu
-npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.3.1-alpha.1.tgz
+npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.3.2-alpha.1.tgz
 ```
 
 For public registry releases configure `NUGET_API_KEY` and/or `NPM_TOKEN` in repository secrets. The default workflow does not fabricate credentials or equate artifacts with registry publication. Signing/notarization is separate and must be configured for production native distribution.
@@ -71,3 +71,7 @@ For public registry releases configure `NUGET_API_KEY` and/or `NPM_TOKEN` in rep
 ## Change policy
 
 Add deterministic regressions for fixed model/rendering defects. Keep document invariants in Core and editing commands transactional. Do not put browser APIs in the model or introduce a second source of truth for GPU pixels. Document unsupported Photoshop semantics, format loss, sampling/rounding boundaries and backend fallback. Never include Adobe assets or claim full parity based on a screenshot.
+
+## UI responsiveness regressions
+
+See [UI responsiveness](ui-responsiveness.md) for retained inspector/row ownership, deferred preview caches, invalidation categories, and read-only performance counters. Browser validation includes warmed real-pointer selection, canvas no-op clicks, cursor/ants isolation, numeric edits after undo and tone/channel preview reuse.

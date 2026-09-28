@@ -19,11 +19,17 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.3.1-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.3.2-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
-## New in 0.3.1
+## New in 0.3.2
+
+**Selection updates values, not the entire workspace.** Inspector schemas, layer rows, toolbars, tabs and visible history controls are retained. Button templates are parsed once per UI thread. Optional histograms are deferred and sampled through independent caches; selecting a layer does not compress a recovery archive. Cursor/handle/selection overlays have a separate retained drawing from image compositing. Real-pointer browser tests assert stable control counts, correct undo rebinding and image-cache reuse.
+
+[UI responsiveness: implementation, diagnostics and validation](docs/ui-responsiveness.md).
+
+## Mask application and compositing
 
 **Apply a mask without losing the layer's source geometry.** Layer → Apply layer mask bakes effective density, feather and affine coverage into authored pixel alpha, preserves RGB and off-canvas source extent, and records one undoable edit. Disabled masks require an explicit enable; non-raster and adjustment layers are not silently flattened.
 

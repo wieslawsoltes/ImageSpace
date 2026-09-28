@@ -70,7 +70,7 @@ public sealed partial class StudioWorkbench
                 VirtualKey.Number1 => () => Surface.SetZoom(1),
                 VirtualKey.R => () => { Surface.ShowRulers = !Surface.ShowRulers; Surface.Invalidate(); }
                 ,
-                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.Invalidate(); }
+                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); }
                 ,
                 VirtualKey.Back => () => Fill(Surface.BackgroundColor),
                 _ => null
@@ -110,7 +110,7 @@ public sealed partial class StudioWorkbench
                 Size = Math.Clamp(Surface.Brush.Size * ((int)e.Key == 219 ? .8f : 1.25f), 1, 1024)
             };
             RefreshOptions();
-            Surface.Invalidate();
+            Surface.InvalidateOverlay();
             e.Handled = true;
             return;
         }

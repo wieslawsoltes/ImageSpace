@@ -40,6 +40,7 @@ public sealed class CurveEditor : UserControl
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            if (_curve == value) return;
             value.Validate();
             _curve = value;
             _lookup = value.CreateLookup();

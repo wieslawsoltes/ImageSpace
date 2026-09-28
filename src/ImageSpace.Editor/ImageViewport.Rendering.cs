@@ -17,8 +17,11 @@ public sealed partial class ImageViewport
         get; private set;
     }
     private PixelSurface? _selection; private long _selectionRevision = -1; private SKPath? _selectionPath;
-    private void Render(SKCanvas c, Size area)
+    public long SceneRenders { get; private set; }
+    public long OverlayRenders { get; private set; }
+    private void RenderImage(SKCanvas c, Size area)
     {
+        SceneRenders++;
         if (_fitPending && area.Width > 50 && area.Height > 50)
             Fit();
         c.Clear(new SKColor(31, 31, 31));
@@ -49,6 +52,18 @@ public sealed partial class ImageViewport
             for (var y = 0; y < d.Height; y++)
                 c.DrawLine(0, y, d.Width, y, paint);
         }
+        c.Restore();
+    }
+
+    private void RenderOverlay(SKCanvas c, Size area)
+    {
+        OverlayRenders++;
+        var d = _session.Document;
+        using var paint = new SKPaint { IsAntialias = false };
+        c.Save();
+        c.ClipRect(new SKRect(Pan.X, Pan.Y, Pan.X + d.Width * Zoom, Pan.Y + d.Height * Zoom));
+        c.Translate(Pan.X, Pan.Y);
+        c.Scale(Zoom);
         DrawSelection(c, d);
         c.Restore();
         if (ShowTransform && Tool == EditorTool.Move && d.ActiveLayer is { } layer && (layer.Kind != LayerKind.Adjustment || d.EditMask))

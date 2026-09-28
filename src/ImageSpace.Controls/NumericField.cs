@@ -23,7 +23,9 @@ public sealed class NumericField : UserControl
         set
         {
             if (!double.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value));
-            _value = Math.Clamp(value, Minimum, Maximum);
+            var next = Math.Clamp(value, Minimum, Maximum);
+            if (_value == next && _input.Text.Length != 0) return;
+            _value = next;
             Render();
         }
     }
@@ -75,6 +77,9 @@ public sealed class NumericField : UserControl
         };
     }
 
+    /// <summary>Discard uncommitted text when rebinding this control to another editing target.</summary>
+    public void ResetPendingEdit() => Render();
+
     private void Commit()
     {
         if (_updating || !IsEnabled) return;
@@ -96,7 +101,8 @@ public sealed class NumericField : UserControl
     private void Render()
     {
         _updating = true;
-        _input.Text = _value.ToString(Format, CultureInfo.InvariantCulture);
+        var text = _value.ToString(Format, CultureInfo.InvariantCulture);
+        if (_input.Text != text) _input.Text = text;
         _updating = false;
     }
 }

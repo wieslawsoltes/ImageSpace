@@ -18,6 +18,20 @@ public sealed class LayerThumbnail : SKCanvasElement
     {
         get; set;
     }
+    private LayerRenderStamp? _stamp;
+    private long _fontRevision = -1;
+    private static long _renders;
+    public static long RenderCount => Interlocked.Read(ref _renders);
+    public void Bind(Layer layer, ImageRenderer renderer)
+    {
+        var stamp = LayerRenderStamp.Capture(layer);
+        var changed = _stamp != stamp || !ReferenceEquals(Renderer, renderer) || _fontRevision != renderer.TypefaceRevision;
+        Layer = layer;
+        Renderer = renderer;
+        _stamp = stamp;
+        _fontRevision = renderer.TypefaceRevision;
+        if (changed) Invalidate();
+    }
     public LayerThumbnail()
     {
         Width = 44;
@@ -26,6 +40,7 @@ public sealed class LayerThumbnail : SKCanvasElement
     }
     protected override void RenderOverride(SKCanvas c, Size area)
     {
+        Interlocked.Increment(ref _renders);
         c.Clear(new(180, 180, 180));
         using var paint = new SKPaint { Color = new(225, 225, 225) };
         for (var y = 0; y < area.Height; y += 5)
@@ -47,12 +62,7 @@ public sealed class LayerThumbnail : SKCanvasElement
         }
         else
         {
-            var copy = Layer.Snapshot();
-            copy.X = 0;
-            copy.Y = 0;
-            copy.ScaleX = copy.ScaleY = 1;
-            copy.Rotation = 0;
-            Renderer.DrawLayer(c, copy, true, true);
+            Renderer.DrawLayer(c, Layer, true, true, ignoreTransform: true);
         }
         c.Restore();
     }

@@ -8,6 +8,8 @@ namespace ImageSpace.Workbench;
 
 public sealed partial class StudioWorkbench
 {
+    private ToneCurve? _diagnosticCurve;
+    private int _diagnosticCurveMidpoint;
     /// <summary>Opt-in, read-only diagnostics. No commands or document mutations are exposed.</summary>
     public string CaptureDiagnostics()
     {
@@ -18,6 +20,24 @@ public sealed partial class StudioWorkbench
             var layer = document.ActiveLayer;
             json.WriteStartObject();
             json.WriteBoolean("ready", true);
+            json.WriteNumber("contentRevision", Session.ContentRevision);
+            json.WriteNumber("uiRefreshes", UiRefreshes);
+            json.WriteNumber("selectionRefreshes", SelectionRefreshes);
+            json.WriteNumber("lastUiRefreshMs", LastUiRefreshMilliseconds);
+            json.WriteNumber("lastSelectionRefreshMs", LastSelectionRefreshMilliseconds);
+            json.WriteNumber("maxSelectionRefreshMs", MaxSelectionRefreshMilliseconds);
+            json.WriteNumber("buttonsCreated", StudioButton.CreatedCount);
+            json.WriteNumber("buttonTemplateBuilds", Studio.ButtonTemplateBuilds);
+            json.WriteNumber("layerRowsCreated", _layers.RowsCreated);
+            json.WriteNumber("inspectorBuilds", _properties.InspectorBuilds);
+            json.WriteNumber("historyButtonsCreated", HistoryButtonsCreated);
+            json.WriteNumber("tabsCreated", TabsCreated);
+            json.WriteNumber("optionsBuilds", OptionsBuilds);
+            json.WriteNumber("toneHistogramBuilds", _properties.HistogramBuilds);
+            json.WriteNumber("channelHistogramBuilds", ChannelHistogramBuilds);
+            json.WriteNumber("thumbnailRenders", LayerThumbnail.RenderCount);
+            json.WriteNumber("sceneRenders", Surface.SceneRenders);
+            json.WriteNumber("overlayRenders", Surface.OverlayRenders);
             json.WriteString("version", ProductVersion);
             json.WriteString("name", document.Name);
             json.WriteString("tool", Surface.Tool.ToString());
@@ -67,7 +87,12 @@ public sealed partial class StudioWorkbench
             json.WriteString("maskPreview", Surface.MaskPreview.ToString());
             json.WriteBoolean("selection", document.Selection is not null);
             json.WriteNumber("curvePoints", layer?.Curves.Rgb.Points.Length ?? 0);
-            json.WriteNumber("curveMidpoint", layer?.Curves.Rgb.CreateLookup()[128] ?? 0);
+            if (_diagnosticCurve != layer?.Curves.Rgb)
+            {
+                _diagnosticCurve = layer?.Curves.Rgb;
+                _diagnosticCurveMidpoint = _diagnosticCurve?.CreateLookup()[128] ?? 0;
+            }
+            json.WriteNumber("curveMidpoint", _diagnosticCurveMidpoint);
             json.WriteNumber("rgbGamma", layer?.Levels.Rgb.Gamma ?? 1);
             json.WriteNumber("redGamma", layer?.Levels.Red.Gamma ?? 1);
             json.WriteNumber("tileUploads", Surface.Renderer.TileUploads);

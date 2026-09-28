@@ -31,7 +31,7 @@ public sealed class LevelsControl : UserControl
     public LevelsChannel Value
     {
         get => _value;
-        set { value.Validate(); _value = value; _graph.Invalidate(); }
+        set { if (_value == value) return; value.Validate(); _value = value; _graph.Invalidate(); }
     }
 
     public LevelsControl()

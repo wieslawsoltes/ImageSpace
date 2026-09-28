@@ -26,7 +26,7 @@ public sealed partial class ImageViewport
         };
         using var path = new SKPath();
         path.AddCircle(local.X, local.Y, Math.Max(.5f, Brush.Size / 2));
-        path.Transform(skia);
+        path.Transform(in skia);
         using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3, Color = new SKColor(0, 0, 0, 170) };
         canvas.DrawPath(path, paint);
         paint.StrokeWidth = 1;

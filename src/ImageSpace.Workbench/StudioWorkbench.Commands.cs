@@ -39,7 +39,7 @@ public sealed partial class StudioWorkbench
                 Item("Paste as new layer", "Ctrl+V", Paste, _clipboard is not null);
                 Item("Clear selected pixels", "Delete", () => Run(Session.ClearPixels), editable && pixels);
                 Line();
-                Item("Free transform", "Ctrl+T", () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.Invalidate(); }, has);
+                Item("Free transform", "Ctrl+T", () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); }, has);
                 Item("Fill with foreground", "Alt+Backspace", () => Fill(Surface.Foreground), editable && pixels);
                 Item("Fill with background", "Ctrl+Backspace", () => Fill(Surface.BackgroundColor), editable && pixels);
                 Item("Keyboard shortcuts", "", () => _ = HelpAsync());
