@@ -18,9 +18,16 @@ test('the selected adjustment stays visible when its inspector reduces the layer
   await click(page, 'Levels adjustment layer');
   await expect.poll(() => page.evaluate(() => globalThis.imageSpaceDiagnostics.activeAdjustment)).toBe('Levels');
   await visible(page, 'Hide Levels');
-  await expect.poll(() => page.evaluate(() => globalThis.imageSpaceControls.some(c => c.name === 'Add layer mask' && !c.enabled))).toBe(true);
+  // Adjustment masks are now supported; blend mode remains intentionally unavailable.
+  await visible(page, 'Add layer mask');
+  await expect.poll(() => page.evaluate(() => globalThis.imageSpaceControls.some(c => c.name === 'Normal' && !c.enabled))).toBe(true);
   await click(page, 'Hide Levels');
   await expect.poll(() => page.evaluate(() => globalThis.imageSpaceDiagnostics.activeVisible)).toBe(false);
   await click(page, 'Show Levels');
   await expect.poll(() => page.evaluate(() => globalThis.imageSpaceDiagnostics.activeVisible)).toBe(true);
+  await click(page, 'Add layer mask');
+  await expect.poll(() => page.evaluate(() => globalThis.imageSpaceDiagnostics.editMask)).toBe(true);
+  // A second Add must not silently replace the authored mask.
+  await expect.poll(() => page.evaluate(() => globalThis.imageSpaceControls.some(c => c.name === 'Add layer mask' && !c.enabled))).toBe(true);
+  await visible(page, 'Hide Levels');
 });

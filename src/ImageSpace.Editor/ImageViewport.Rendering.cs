@@ -25,7 +25,10 @@ public sealed partial class ImageViewport
         DrawCheckerboard(c, rect, area, paint);
         c.Translate(Pan.X, Pan.Y);
         c.Scale(Zoom);
-        Renderer.Draw(c, d);
+        if (!d.EditMask || d.ActiveLayer?.Mask is null) _maskPreview = MaskPreviewMode.Composite;
+        if (_maskPreview != MaskPreviewMode.Grayscale) Renderer.Draw(c, d);
+        if (d.EditMask && d.ActiveLayer is { Mask: not null } maskedLayer)
+            _maskPreviewRenderer.Draw(c, Renderer, d, maskedLayer, _maskPreview);
         if (ShowGrid && Zoom > 4)
         {
             paint.Color = new(0, 0, 0, 60);
@@ -37,7 +40,7 @@ public sealed partial class ImageViewport
         }
         DrawSelection(c, d);
         c.Restore();
-        if (ShowTransform && Tool == EditorTool.Move && d.ActiveLayer is { } layer && layer.Kind != LayerKind.Adjustment)
+        if (ShowTransform && Tool == EditorTool.Move && d.ActiveLayer is { } layer && (layer.Kind != LayerKind.Adjustment || d.EditMask))
             DrawHandles(c, layer);
         if (_gesture == "selection")
         {

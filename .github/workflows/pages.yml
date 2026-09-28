@@ -52,14 +52,14 @@ jobs:
           test "$(jq -r .commit site/build-info.json)" = "${{ steps.build.outputs.sha }}"
           test "$(jq -r .host site/build-info.json)" = "Uno WebAssembly"
           test -n "$(find site -name '*.wasm' -print -quit)"
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
           include-hidden-files: true
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
       - uses: actions/setup-node@v7
         with:

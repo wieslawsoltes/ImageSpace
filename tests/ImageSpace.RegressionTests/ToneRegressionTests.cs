@@ -250,7 +250,7 @@ internal static class ToneRegressionTests
             renderer.Rasterize(document);
             Check(renderer.ToneFilterBuilds == before + 1);
         });
-        add("tone Skia: opacity change invalidates cached table", () =>
+        add("tone Skia: opacity crossfade preserves the cached full-strength table", () =>
         {
             var document = Document();
             document.ActiveLayer!.Curves = new() { Rgb = Negative };
@@ -258,7 +258,11 @@ internal static class ToneRegressionTests
             renderer.Rasterize(document);
             document.ActiveLayer.Opacity = 0;
             Check(renderer.Rasterize(document).Get(80, 0) == document.Layers[0].Pixels!.Get(80, 0));
-            Check(renderer.ToneFilterBuilds == 2);
+            Check(renderer.ToneFilterBuilds == 1);
+            document.ActiveLayer.Opacity = .5f;
+            var half = renderer.Rasterize(document).Get(80, 0);
+            Check(Math.Abs(half.R - 128) <= 1 && Math.Abs(half.G - 128) <= 1 && Math.Abs(half.B - 128) <= 1);
+            Check(renderer.ToneFilterBuilds == 1);
         });
         add("tone Skia: layers above the adjustment remain unaffected", () =>
         {

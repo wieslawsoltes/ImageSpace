@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - uses: actions/setup-node@v7
@@ -26,6 +26,8 @@ jobs:
         run: |
           dotnet run --project tests/ImageSpace.Tests -c Release
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
+          dotnet run --project tests/ImageSpace.MaskTests -c Release
+          dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -43,14 +45,11 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Pointer, keyboard, tonal, file and GPU browser acceptance
+      - name: Pointer, keyboard, tonal, mask, file and GPU browser acceptance
         run: |
           npm run test:browser
           mkdir -p site/screenshots
-          cp artifacts/screenshots/workspace.png site/screenshots/workspace.png
-          cp artifacts/screenshots/compact-workspace.png site/screenshots/compact-workspace.png
-          cp artifacts/screenshots/curves-adjustment.png site/screenshots/curves-adjustment.png
-          cp artifacts/screenshots/levels-adjustment.png site/screenshots/levels-adjustment.png
+          cp artifacts/screenshots/*.png site/screenshots/
       - name: Pack all reusable NuGet and WebGPU libraries
         run: |
           mkdir -p artifacts/packages

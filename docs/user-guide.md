@@ -14,7 +14,11 @@ The foreground controls paint/type/shape color. Use the spectrum or hex dialog, 
 
 `M` selects a rectangle; Shift+M an ellipse; `L` a lasso; `W` a contiguous color region. Shift adds, Alt subtracts, Shift+Alt intersects. Ctrl+A selects all, Ctrl+D deselects, Ctrl+Shift+I inverts. Select → Feather softens coverage. A deliberately empty selection edits nothing.
 
-Add a layer mask to convert the selection into coverage. Select the mask icon before painting: black hides, white reveals. Disabling/deleting a mask does not erase source pixels. Adjustment/group masks are outside the implementation.
+Add a layer mask to convert the selection into coverage, including on Curves, Levels and other adjustment layers. With no selection, a new mask reveals all authored content, including off-canvas pixels. Existing masks are never silently replaced. Select the mask thumbnail to edit it: black hides, white reveals; Eraser reduces coverage independently of the foreground color. Brush, pencil, clone, basic dodge/burn/smudge, fill and linear gradient operate on mask coverage. Destructive filters also process coverage rather than mask RGB.
+
+The mask Properties inspector exposes Density (0–100%) and Feather (0–32 mask-local pixels) without rewriting the original mask. Density zero bypasses authored hiding. Disable retains the mask for comparison; Delete removes it but remains undoable. The Properties **Invert mask** action operates on the whole authored mask; **Ctrl+I** follows the active pixel selection. Locks protect both source content and mask changes.
+
+**Composite**, **Mask** and **Overlay** are inspection modes. Grayscale shows effective coverage after density/feather; the red overlay highlights hidden regions. These views do not add undo entries and are never baked into native saves or image exports. Back to layer content restores the ordinary inspector. Masks share their layer transform: raster-mask movement is linked to its pixels, while an adjustment layer's transform places its mask. Independent/unlinked transforms and group masks remain unsupported.
 
 ## Transform and navigate
 
@@ -46,7 +50,7 @@ History lets you return to previous edits. Redo remains available until a new ed
 
 ## Save and recover
 
-**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Curves/Levels documents use manifest version 2; the reader also accepts version 1. Old version-1-only readers reject tone documents rather than silently dropping their appearance. History and transient selections are not stored in archives.
+**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Tone-only files use manifest version 2. Adjustment masks, non-default density/feather and fractional adjustment crossfades require version 3; the reader accepts versions 1–3. Older readers reject unsupported versions rather than silently dropping the new features. History and transient selections are not stored in archives.
 
 Browser saves are downloads. Native saves use file pickers; cancellation does not mark the document as saved. PNG/JPEG/WebP export the visible composite. JPEG places transparency against white.
 

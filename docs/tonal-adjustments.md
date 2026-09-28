@@ -18,7 +18,7 @@ Presets include Linear, Strong contrast, Lift shadows, Fade blacks and Negative.
 
 `ToneCurve.CreateLookup()` evaluates an independent shape-preserving cubic Hermite interpolation. Interior slopes use weighted harmonic means of adjacent secants. At a slope sign change, the tangent becomes zero. One-sided endpoint slopes are limited, and each segment is bounded by its endpoint outputs. This avoids interpolation overshoot without requiring the whole curve to be monotonic; negative and intentionally nonmonotonic curves remain supported.
 
-Each channel becomes a 256-entry lookup. Channel-specific lookup is applied first, followed by the composite RGB lookup. Strength interpolates the resulting lookup against identity. Alpha is preserved independently.
+Each channel becomes a 256-entry lookup. Channel-specific lookup is applied first, followed by the composite RGB lookup. The renderer applies the full-strength lookup, then combines its result with the original through opacity and optional mask coverage. Alpha is preserved independently; mask compositing uses a complementary premultiplied sum rather than two source-over draws.
 
 ## Levels
 
@@ -84,7 +84,7 @@ The standalone `CurveEditor` and `LevelsControl` in `ImageSpace.Controls` expose
 
 ## Rendering and ownership
 
-Tone settings use immutable records; curve points use `ImmutableArray<CurvePoint>`. Undo snapshots can share them without aliasing later edits. The renderer caches the corresponding `SKColorFilter` by layer ID, settings identity and opacity. It rebuilds a filter when settings change, not on every unchanged frame.
+Tone settings use immutable records; curve points use `ImmutableArray<CurvePoint>`. Undo snapshots can share them without aliasing later edits. The renderer caches the full-strength `SKColorFilter` by layer ID and settings identity. Opacity and mask coverage are applied after filtering, so changing opacity reuses the lookup table. It rebuilds a table when its settings change, not on every unchanged frame.
 
 Skia executes these lookup filters on the graphics backend used by the host. This extends the shared desktop/browser compositor; it does not add a separate WebGPU dispatch/readback per pointer event. The standalone WebGPU module still supports its eight existing destructive color kernels. Software rendering remains possible when selected by the host, and CI software-adapter results do not establish physical-GPU performance.
 
@@ -92,9 +92,11 @@ Histograms in the tone inspector are explicitly sampled from a preview with a ma
 
 ## Files and compatibility
 
-Native documents containing Curves or Levels use manifest **version 2**, retaining all channel settings and curve points. Other documents continue to use version 1. The new reader accepts both versions and supplies identity tone settings for older files. Old version-1-only readers reject tonal version-2 files rather than silently dropping their appearance.
+Tone-only documents use manifest **version 2**, retaining all channel settings and curve points. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require **version 3**. The reader accepts versions 1–3 and supplies identity tone settings for older files; files without newer features retain their minimal writer version. Older readers reject unsupported versions rather than silently dropping their appearance.
 
-PSD adjustment compatibility is not implemented. PSD export with visible adjustment layers produces the existing flattened compatibility image; save `.imagespace` to retain editability. Curves/Levels currently operate in the RGB8 workflow and do not provide CMYK, Lab, HDR, ICC soft proofing, adjustment masks, clipping groups, black/white eyedroppers or automatic color correction.
+PSD adjustment compatibility is not implemented. PSD export with visible adjustment layers produces the existing flattened compatibility image; save `.imagespace` to retain editability. Curves/Levels currently operate in the RGB8 workflow and do not provide CMYK, Lab, HDR, ICC soft proofing, clipping groups, black/white eyedroppers or automatic color correction.
+
+Adjustment masks, density/feather, mask painting and view-only grayscale/overlay inspection are described in [mask editing](mask-editing.md). Masks are linked to the layer transform; groups and independently transformed masks remain outside this implementation.
 
 ## Regression coverage
 

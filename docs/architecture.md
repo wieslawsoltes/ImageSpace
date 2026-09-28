@@ -50,7 +50,13 @@ Recovery serializes a snapshot after committed changes, approximately every eigh
 
 Layers are stored bottom to top. Each layer owns a scale/rotation/translation transform, visibility, opacity, a blend mode, optional mask and content. Pixel, text and shape content share the same renderer. Layer masks use alpha coverage and destination-in compositing.
 
-Adjustment layers recursively compose layers below them through Skia color or image filters. Color adjustment opacity interpolates between the identity and effect matrix. Blur opacity scales blur strength in the current implementation; it is not Photoshop's complete adjustment/group/mask semantics. Live adjustment masks, group isolation and clipping groups remain outside the parity boundary.
+Adjustment layers recursively compose layers below them through Skia image-filter graphs. Opacity crossfades the complete clamped effect output rather than interpolating matrix coefficients or blur radius. Mask coverage uses complementary premultiplied branches: `result = coverage * effect(source) + (1 - coverage) * source`. The branches are added, not source-over blended, so color-only adjustments retain the original alpha.
+
+Authored mask alpha is separate from non-destructive density and feather. Coverage is `1 - density + density * featheredMask`; feather is evaluated in mask-local pixels before the linked layer transform. Skia caches the native mask graph by surface identity/revision, density, feather, transform and output bounds. View-only grayscale/overlay inspection owns a separate graph cache and borrows the renderer's tile uploads, avoiding cache-key thrashing without raster readback. Group isolation, clipping groups and independent/unlinked mask transforms remain outside this implementation.
+
+All editing routes through `PixelTarget`. Pixel filters convert authored mask alpha to opaque grayscale, run the filter, then convert luminance back to alpha. This includes fully hidden pixels. Selection coverage is sampled at transformed pixel centers, with explicit outside-canvas rejection before integer conversion. Async filter results are discarded when the session revision, layer, edit channel or target tile revision changes.
+
+Native archives use version 3 when adjustment masks, non-default density/feather or fractional adjustment output-crossfade semantics are present. Version 1/2 files remain readable; feature-free files retain their minimal supported version. Older readers reject version 3 instead of silently dropping mask behavior.
 
 Export uses a separate Skia raster surface. It cannot directly reuse an arbitrary UI-thread GPU context on a background worker. PNG and WebP retain alpha; JPEG composites against white. Raster effects operate on the authoritative tile model, with selection coverage applied to the output.
 

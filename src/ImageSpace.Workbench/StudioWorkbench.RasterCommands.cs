@@ -13,6 +13,7 @@ public sealed partial class StudioWorkbench
     private void SelectLayerAlpha() => Run(() =>
     {
         if (Session.Document.ActiveLayer is not { } layer) return;
+        if (Session.Document.EditMask) { Session.LoadMaskSelection(); return; }
         var pixels = Surface.Renderer.RasterizeLayer(Session.Document, layer);
         Session.Execute("Select layer alpha", document =>
         {
@@ -22,11 +23,7 @@ public sealed partial class StudioWorkbench
             document.Selection = mask;
         });
     });
-    private void Fill(Rgba32 color) => Run(() =>
-    {
-        if (Session.Document.ActiveLayer is not { } layer) return;
-        Session.Execute("Fill", document => RasterOperations.Fill(document, layer, color));
-    });
+    private void Fill(Rgba32 color) => Run(() => Session.FillPixels(color));
 
     private void Copy(bool cut) => Run(() =>
     {
@@ -154,55 +151,45 @@ public sealed partial class StudioWorkbench
 
     private async Task ApplyFilterAsync(FilterKind kind, float amount = 0, float secondary = 0)
     {
-        if (_busy) return;
+        if (_busy || Session.IsInTransaction) return;
         var session = Session;
         var layer = session.Document.ActiveLayer;
-        if (layer?.Pixels is null || layer.Locked)
+        if (layer is not { Locked: false } || PixelTarget.Get(session.Document, layer) is not { } target)
         {
-            ShowStatus("Select an unlocked pixel layer, or rasterize the selected layer first.");
+            ShowStatus("Select an unlocked pixel layer or its mask before applying a filter.");
             return;
         }
+        var revision = session.Revision;
+        var maskEditing = session.Document.EditMask;
+        var source = target.Snapshot();
+        var sourceRevision = target.Revision;
         _busy = true;
         _workspace.IsHitTestVisible = false;
         ShowStatus("Applying " + kind + "…");
         try
         {
-            var maskEditing = session.Document.EditMask;
-            var source = (maskEditing ? layer.Mask : layer.Pixels)?.Snapshot() ?? throw new InvalidOperationException("No mask exists on this layer.");
-            PixelSurface? result = null;
+            PixelSurface? output = null;
             var usedGpu = false;
-            if (maskEditing && kind == FilterKind.Invert)
+            if (GpuFilter is not null && !maskEditing)
             {
-                result = source.Snapshot();
-                for (var y = 0; y < source.Height; y++)
-                    for (var x = 0; x < source.Width; x++) result.Set(x, y, new Rgba32(255, 255, 255, (byte)(255 - source.Get(x, y).A)));
-            }
-            if (result is null && GpuFilter is not null && !maskEditing)
-            {
-                try { result = await GpuFilter(source, kind, amount, secondary); usedGpu = result is not null; }
+                try { output = await GpuFilter(source, kind, amount, secondary); usedGpu = output is not null; }
                 catch (Exception error) { ShowStatus("GPU unavailable; using the CPU kernel. " + error.Message); }
             }
-            if (result is null)
+            if (output is null)
             {
                 await Task.Yield();
-                result = OperatingSystem.IsBrowser() ? FilterEngine.Apply(source, kind, amount, secondary) :
-                    await Task.Run(() => FilterEngine.Apply(source, kind, amount, secondary));
+                output = OperatingSystem.IsBrowser()
+                    ? PixelFilterPipeline.Apply(source, maskEditing, kind, amount, secondary)
+                    : await Task.Run(() => PixelFilterPipeline.Apply(source, maskEditing, kind, amount, secondary));
             }
-            var output = result;
-            session.Execute(kind.ToString(), document =>
-            {
-                if (document.Selection is not null)
-                {
-                    for (var y = 0; y < source.Height; y++)
-                        for (var x = 0; x < source.Width; x++)
-                        {
-                            var point = layer.ToDocument(new(x, y));
-                            output.Set(x, y, Rgba32.Lerp(source.Get(x, y), output.Get(x, y), document.Coverage((int)point.X, (int)point.Y)));
-                        }
-                }
-                if (maskEditing) layer.Mask = output; else layer.Pixels = output;
-            });
-            ShowStatus(kind + " applied · " + (usedGpu ? "WebGPU compute" : "CPU kernel"));
+            // Do not apply an asynchronous result to a changed document, edit channel, layer or tile revision.
+            if (!ReferenceEquals(session, Session) || session.Revision != revision || session.IsInTransaction ||
+                !ReferenceEquals(session.Document.ActiveLayer, layer) || session.Document.EditMask != maskEditing ||
+                !ReferenceEquals(PixelTarget.Get(session.Document, layer), target) || target.Revision != sourceRevision)
+                throw new InvalidOperationException("The edit target changed while the filter was running. Its result was discarded.");
+            session.Execute(kind.ToString(), document => PixelTarget.Replace(document, layer,
+                PixelEdits.RestrictToSelection(document, layer, source, output)));
+            ShowStatus(kind + " applied · " + (usedGpu ? "WebGPU compute" : maskEditing ? "Mask coverage kernel" : "CPU kernel"));
         }
         catch (Exception error) { ShowStatus(error.Message); }
         finally { _busy = false; _workspace.IsHitTestVisible = true; StateChanged?.Invoke(); }

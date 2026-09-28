@@ -4,7 +4,7 @@ using ImageSpace.Filters;
 namespace ImageSpace.Editing;
 
 public sealed record HistoryEntry(string Name, ImageDocument Before, ImageDocument After, long BeforeVersion, long AfterVersion);
-public sealed class EditorSession
+public sealed partial class EditorSession
 {
     private readonly List<HistoryEntry> _undo = []; private readonly List<HistoryEntry> _redo = [];
     private ImageDocument? _before; private string _transaction = ""; private long _version; private long _nextVersion; private long _savedVersion;
@@ -151,24 +151,30 @@ public sealed class EditorSession
     }
     public void AddMask()
     {
-        var layer = Document.ActiveLayer;
-        if (layer is null || layer.Locked)
-            return;
-        Execute("Add layer mask", d => { var w = layer.Pixels?.Width ?? (int)Math.Max(1, layer.Width); var h = layer.Pixels?.Height ?? (int)Math.Max(1, layer.Height); var mask = new PixelSurface(w, h); for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var p = layer.ToDocument(new(x, y)); mask.Set(x, y, new(255, 255, 255, Rgba32.Byte(d.Coverage((int)p.X, (int)p.Y) * 255))); } layer.Mask = mask; d.EditMask = true; });
+        if (Document.ActiveLayer is not { Locked: false } layer || layer.Mask is not null) return;
+        // Allocate/validate first. A failed allocation cannot leave a half-created history entry.
+        var mask = MaskOperations.FromSelection(Document, layer);
+        Execute("Add layer mask", document =>
+        {
+            layer.Mask = mask;
+            layer.MaskDensity = 1;
+            layer.MaskFeather = 0;
+            layer.MaskEnabled = true;
+            document.EditMask = true;
+        });
     }
     public void ApplyFilter(FilterKind kind, float amount = 0, float secondary = 0)
     {
-        var layer = Document.ActiveLayer;
-        if (layer?.Pixels is null || layer.Locked)
-            throw new InvalidOperationException("Select an unlocked pixel layer. Rasterize text or shapes first.");
-        Execute(kind.ToString(), d => { var source = d.EditMask ? layer.Mask : layer.Pixels; if (source is null) return; var filtered = FilterEngine.Apply(source, kind, amount, secondary); if (d.Selection is not null) { for (var y = 0; y < source.Height; y++) for (var x = 0; x < source.Width; x++) { var p = layer.ToDocument(new(x, y)); var coverage = d.Coverage((int)p.X, (int)p.Y); filtered.Set(x, y, Rgba32.Lerp(source.Get(x, y), filtered.Get(x, y), coverage)); } } if (d.EditMask) layer.Mask = filtered; else layer.Pixels = filtered; });
+        var layer = Document.ActiveLayer ?? throw new InvalidOperationException("Select a layer first.");
+        var source = PixelTarget.RequireEditable(Document, layer).Snapshot();
+        var output = PixelFilterPipeline.Apply(source, Document.EditMask, kind, amount, secondary);
+        Execute(kind.ToString(), document => PixelTarget.Replace(document, layer,
+            PixelEdits.RestrictToSelection(document, layer, source, output)));
     }
     public void ClearPixels()
     {
-        var layer = Document.ActiveLayer;
-        if (layer?.Pixels is null || layer.Locked)
-            return;
-        Execute("Clear pixels", d => { var target = d.EditMask ? layer.Mask : layer.Pixels; if (target is null) return; for (var y = 0; y < target.Height; y++) for (var x = 0; x < target.Width; x++) { var p = layer.ToDocument(new(x, y)); var old = target.Get(x, y); target.Set(x, y, old.WithAlpha(Rgba32.Byte(old.A * (1 - d.Coverage((int)p.X, (int)p.Y))))); } });
+        if (Document.ActiveLayer is not { Locked: false } layer || PixelTarget.Get(Document, layer) is null) return;
+        Execute(Document.EditMask ? "Clear mask coverage" : "Clear pixels", document => PixelEdits.Clear(document, layer));
     }
     public void Crop(int x, int y, int width, int height)
     {

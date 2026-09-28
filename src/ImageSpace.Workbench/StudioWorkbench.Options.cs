@@ -5,7 +5,7 @@ public sealed partial class StudioWorkbench
     private void RefreshOptions()
     {
         _options.Children.Clear();
-        _options.Children.Add(Studio.Label(Surface.Tool.ToString()));
+        _options.Children.Add(Studio.Label(Surface.Tool + (Session.Document.EditMask ? " · Mask" : "")));
         _options.Children.Add(new Border { Width = 1, Height = 22, Background = Studio.Brush("#1f1f1f") });
         if (Surface.Tool is EditorTool.Brush or EditorTool.Pencil or EditorTool.Eraser or EditorTool.Clone or EditorTool.Dodge or EditorTool.Burn or EditorTool.Smudge)
         {

@@ -37,23 +37,15 @@ public sealed class ImageDocument
     {
         PixelSurface.ValidateSize(Width, Height);
         if (Name is null || Name.Length > 1024 || Layers is null || Layers.Count > 128 || Layers.Any(layer => layer is null))
-        {
             throw new InvalidDataException("Invalid document metadata or layer count.");
-        }
         if (Layers.Select(layer => layer.Id).Distinct().Count() != Layers.Count)
-        {
             throw new InvalidDataException("Duplicate layer IDs.");
-        }
         if (!double.IsFinite(Dpi) || Dpi is < 1 or > 2400)
-        {
             throw new InvalidDataException("Invalid DPI.");
-        }
         foreach (var layer in Layers)
         {
             if (!Enum.IsDefined(layer.Kind) || !Enum.IsDefined(layer.Blend) || !Enum.IsDefined(layer.Adjustment))
-            {
                 throw new InvalidDataException("The document uses an unsupported layer or adjustment type.");
-            }
             if (!float.IsFinite(layer.X) || !float.IsFinite(layer.Y) || Math.Abs(layer.X) > MaximumLayerExtent ||
                 Math.Abs(layer.Y) > MaximumLayerExtent || !float.IsFinite(layer.ScaleX) || !float.IsFinite(layer.ScaleY) ||
                 Math.Abs(layer.ScaleX) < 0.001 || Math.Abs(layer.ScaleY) < 0.001 ||
@@ -62,28 +54,22 @@ public sealed class ImageDocument
                 !float.IsFinite(layer.Width) || !float.IsFinite(layer.Height) ||
                 layer.Width is < 0 or > MaximumLayerExtent || layer.Height is < 0 or > MaximumLayerExtent ||
                 !float.IsFinite(layer.FontSize) || layer.FontSize is < 1 or > 4096 ||
-                !float.IsFinite(layer.StrokeWidth) || layer.StrokeWidth is < 0 or > 4096 ||
-                !float.IsFinite(layer.CornerRadius) || layer.CornerRadius is < 0 or > MaximumLayerExtent ||
-                !float.IsFinite(layer.Amount) || !float.IsFinite(layer.Secondary))
-            {
+                !float.IsFinite(layer.Amount) || !float.IsFinite(layer.Secondary) ||
+                !float.IsFinite(layer.StrokeWidth) || layer.StrokeWidth is < 0 or > 10000 ||
+                !float.IsFinite(layer.CornerRadius) || layer.CornerRadius is < 0 or > MaximumLayerExtent)
                 throw new InvalidDataException("Invalid layer geometry or effect parameters.");
-            }
             if (layer.Text is null || layer.Name is null || layer.FontFamily is null ||
                 layer.Text.Length > 100000 || layer.Name.Length > 1024 || layer.FontFamily.Length > 1024 ||
                 layer.Curves is null || layer.Levels is null)
-            {
                 throw new InvalidDataException("Invalid layer text or tone settings.");
-            }
+            if (!float.IsFinite(layer.MaskDensity) || layer.MaskDensity is < 0 or > 1 ||
+                !float.IsFinite(layer.MaskFeather) || layer.MaskFeather is < 0 or > 32)
+                throw new InvalidDataException("Mask density must be 0–1 and feather must be 0–32 pixels.");
             layer.Curves.Validate();
             layer.Levels.Validate();
         }
         if (Selection is not null && (Selection.Width != Width || Selection.Height != Height))
-        {
             throw new InvalidDataException("Selection dimensions differ from the canvas.");
-        }
-        if (ActiveLayer is null && Layers.Count > 0)
-        {
-            ActiveLayerId = Layers[^1].Id;
-        }
+        if (ActiveLayer is null && Layers.Count > 0) ActiveLayerId = Layers[^1].Id;
     }
 }

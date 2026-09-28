@@ -105,7 +105,7 @@ public sealed class LayerPanel : UserControl
             _lastActive = session.Document.ActiveLayerId;
             _revealSelection = true;
         }
-        _addMask.IsEnabled = active is { Locked: false } && active.Kind != LayerKind.Adjustment;
+        _addMask.IsEnabled = active is { Locked: false, Mask: null };
         _deleteLayer.IsEnabled = active is { Locked: false };
         _settings.Children.Clear();
         var blend = new StudioButton(active?.Blend.ToString() ?? "Normal", () => { })
@@ -133,13 +133,13 @@ public sealed class LayerPanel : UserControl
             if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
         })), "lock") { Width = 26, Height = 22, IsEnabled = active is not null };
         lockButton.Selected(active?.Locked == true);
-        var modeName = active?.Kind == LayerKind.Adjustment ? "Adjustment" : session.Document.EditMask ? "Editing mask" : "Editing pixels";
+        var modeName = session.Document.EditMask ? "Editing mask" : active?.Kind == LayerKind.Adjustment ? "Adjustment" : "Editing pixels";
         var maskButton = new StudioButton(modeName, () =>
         {
             if (session.IsInTransaction || active?.Mask is null) return;
             session.Document.EditMask = !session.Document.EditMask;
             session.Notify();
-        }) { Height = 22, FontSize = 10, IsEnabled = active?.Mask is not null && active.Kind != LayerKind.Adjustment };
+        }) { Height = 22, FontSize = 10, IsEnabled = active?.Mask is not null };
         _settings.Children.Add(Studio.Row(Studio.Label("Lock:", 11, "#a6a6a6"), lockButton, maskButton));
         _rows.Children.Clear();
         foreach (var layer in session.Document.Layers.AsEnumerable().Reverse())
@@ -181,11 +181,12 @@ public sealed class LayerPanel : UserControl
             {
                 var mask = new StudioButton("Edit mask for " + layer.Name, () =>
                 {
-                    if (session.IsInTransaction || layer.Kind == LayerKind.Adjustment) return;
-                    session.SelectLayer(layer.Id);
-                    session.Document.EditMask = true;
-                    session.Notify();
-                }, "mask") { Width = 27, Height = 28, IsEnabled = layer.Kind != LayerKind.Adjustment };
+                    session.SelectMask(layer.Id);
+                }, "mask")
+                {
+                    Width = 34, Height = 28, Padding = new Thickness(2),
+                    Content = new LayerThumbnail { Layer = layer, ShowMask = true, Renderer = _renderer, Width = 28, Height = 20 }
+                };
                 mask.Selected(session.Document.EditMask && selected);
                 suffix.Children.Add(mask);
             }

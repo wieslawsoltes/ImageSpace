@@ -16,7 +16,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Dodge/burn/smudge | Basic kernels; not healing/content-aware or advanced Photoshop tonal tools |
 | Fill/gradient | Foreground/background, active pixel layer, linear gradient |
 | Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather and alpha selection |
-| Masks | Pixel/text/shape coverage masks; adjustment/group masks remain unsupported |
+| Masks | Pixel/text/shape/adjustment coverage masks, density, feather, selection-aware pixel tools and view-only grayscale/overlay inspection; groups and unlinked mask transforms remain unsupported |
 | Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; no groups or clipping chains |
 | Type | Editable multiline Inter text, size, weight and color; no complete typography/font-discovery UI |
 | Shapes | Rectangle, rounded rectangle and ellipse, fill and stroke; no pen/path editor |
@@ -27,7 +27,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Live adjustments | Brightness/contrast, saturation, invert, grayscale, sepia, blur, **Curves and Levels** |
 | Curves | Four channels, up to sixteen points per channel, shape-preserving cubic interpolation, numeric/keyboard edits, presets and live transactional dragging |
 | Levels | Four channels, input/output endpoints, gamma, draggable histogram handles, numeric edits and presets |
-| Native archive | Version 1 and 2 reader; version 2 preserves Curves/Levels; UTF-8 manifest, pixel/mask data and input limits |
+| Native archive | Version 1–3 reader; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
 | PSD | Bounded PSD v1 RGB/8 raw/PackBits raster layers, offsets, visibility, opacity and blend keys; not lossless Photoshop roundtripping |
 | PSB/high-bit/CMYK PSD | Rejected rather than silently interpreted as equivalent |
 | PNG/JPEG/WebP | Raster import/export; JPEG is composited against white |
@@ -41,13 +41,13 @@ This is the implemented boundary, not a list of placeholders presented as comple
 
 Camera Raw, CMYK/Lab/spot channels, 16/32-bit HDR, ICC soft proofing, smart objects, Photoshop-compatible adjustment metadata, pen/path editing, healing/content-aware reconstruction, generative AI, liquify, puppet/perspective warp, layer styles, advanced typography/font discovery, linked assets, group/clipping semantics, actions/macros, plug-ins, video/timeline, Photoshop cloud services, PSB and lossless PSD roundtrips.
 
-Curves and Levels are independent algorithms and UI components, not a claim of byte-identical Photoshop output. Adjustment masks, black/white eyedroppers and automatic color correction are not included. See [tonal adjustments](tonal-adjustments.md) for exact interpolation, channel order and interaction behavior.
+Curves and Levels are independent algorithms and UI components, not a claim of byte-identical Photoshop output. Adjustment masks are supported; black/white eyedroppers and automatic color correction are not included. See [tonal adjustments](tonal-adjustments.md) for exact interpolation, channel order and interaction behavior.
 
 ## File-preservation policy
 
 Always retain original imports. A source PSD using unsupported masks, effects, groups, smart objects or adjustments can differ from its Photoshop composite after raster-layer import. Import warns about that boundary. Native Save does not overwrite the original PSD.
 
-PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone documents use manifest version 2 so an older version-1 reader cannot silently discard the new adjustments.
+PSD export rasterizes type, shapes, transforms and supported masks. Visible adjustment layers require a flattened compatibility export. Use `.imagespace` to preserve editable application-specific settings. Tone-only documents use manifest version 2. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require version 3, preventing older readers from silently discarding those semantics.
 
 Working limits are 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. Input/archive limits reduce risk but do not guarantee every combination fits a browser's memory budget.
 

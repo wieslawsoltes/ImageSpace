@@ -45,6 +45,12 @@ public sealed partial class StudioWorkbench
             json.WriteBoolean("activeLocked", layer?.Locked ?? false);
             json.WriteBoolean("mask", layer?.Mask is not null);
             json.WriteBoolean("editMask", document.EditMask);
+            json.WriteNumber("maskDensity", layer?.MaskDensity ?? 1);
+            json.WriteNumber("maskFeather", layer?.MaskFeather ?? 0);
+            json.WriteBoolean("maskEnabled", layer?.MaskEnabled ?? false);
+            json.WriteNumber("maskRevision", layer?.Mask?.Revision ?? 0);
+            json.WriteNumber("maskFilterBuilds", Surface.Renderer.MaskFilterBuilds);
+            json.WriteString("maskPreview", Surface.MaskPreview.ToString());
             json.WriteBoolean("selection", document.Selection is not null);
             json.WriteNumber("curvePoints", layer?.Curves.Rgb.Points.Length ?? 0);
             json.WriteNumber("curveMidpoint", layer?.Curves.Rgb.CreateLookup()[128] ?? 0);
