@@ -99,10 +99,14 @@ test('mask numeric affine editing and real on-canvas resizing leave authored pix
   const before = await state(page);
   const toWorld = (x, y) => ({x: before.maskX + x * before.maskM11 + y * before.maskM21,
     y: before.maskY + x * before.maskM12 + y * before.maskM22});
-  const corner = toWorld(1000,700), target = toWorld(1100,770);
+  // Authoring dimensions are not the canvas or the displayed affine dimensions.
+  // The sample is 1000 x 680; never assume a 700-pixel mask when picking a handle.
+  const corner = toWorld(before.maskWidth, before.maskHeight);
+  const target = toWorld(before.maskWidth * 1.1, before.maskHeight * 1.1);
   await drag(page, await point(page,corner.x,corner.y), await point(page,target.x,target.y));
   await expect.poll(async () => (await state(page)).history).toBe(before.history + 1);
   await expect.poll(async () => (await state(page)).maskM11).toBeCloseTo(before.maskM11 * 1.1, 2);
+  await expect.poll(async () => (await state(page)).maskM22).toBeCloseTo(before.maskM22 * 1.1, 2);
   await expect.poll(async () => (await state(page)).maskX).toBeCloseTo(20, 3);
   expect((await state(page)).activeX).toBe(0);
   expect((await state(page)).maskRevision).toBe(revision);

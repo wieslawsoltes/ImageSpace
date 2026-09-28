@@ -56,7 +56,7 @@ The standalone browser kernel package can be built with:
 
 ```sh
 npm run pack:webgpu
-npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.2.0-alpha.1.tgz
+npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.3.0-alpha.1.tgz
 ```
 
 For public registry releases, configure `NUGET_API_KEY` and/or `NPM_TOKEN` in repository secrets. The default workflow does not fabricate credentials or report skipped registry publication as a release success. Signing/notarization is separate and must be configured for production native distribution.

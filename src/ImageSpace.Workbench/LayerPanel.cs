@@ -13,6 +13,7 @@ public sealed class LayerPanel : UserControl
     private readonly StudioButton _deleteLayer;
     private Guid _lastActive;
     private bool _revealSelection;
+    private bool _followActiveSelection;
     public event Action? AddMaskRequested;
     public event Action? AddAdjustmentRequested;
     public event Action? RenameRequested;
@@ -41,6 +42,13 @@ public sealed class LayerPanel : UserControl
         // Wait for actual row and viewport arrangement before scrolling. Merely changing
         // selection cannot reveal the row using the previous inspector's viewport height.
         _scroll.LayoutUpdated += (_, _) => RevealSelection();
+        _scroll.SizeChanged += (_, _) =>
+        {
+            // A larger mask/tone inspector can shrink the viewport without changing
+            // ActiveLayerId. Keep the editing target visible after the new arrangement.
+            if (_followActiveSelection)
+                _revealSelection = true;
+        };
         Grid.SetRow(_scroll, 1);
         grid.Children.Add(_scroll);
         _addMask = new StudioButton("Add layer mask", () => AddMaskRequested?.Invoke(), "mask");
@@ -65,7 +73,10 @@ public sealed class LayerPanel : UserControl
         if (!ReferenceEquals(_session, session))
         {
             _lastActive = session.Document.ActiveLayerId;
-            _revealSelection = false;
+            // Preserve the initial sample's top-of-stack presentation; switching to
+            // an opened document must reveal its saved active layer.
+            _followActiveSelection = _session is not null;
+            _revealSelection = _followActiveSelection;
         }
         _session = session;
         _renderer = renderer;
@@ -96,6 +107,11 @@ public sealed class LayerPanel : UserControl
         var rowIndex = _session.Document.Layers.Count - index - 1;
         if (rowIndex >= _rows.Children.Count || _rows.Children[rowIndex] is not FrameworkElement { ActualHeight: > 0 })
             return;
+        // Clearing/rebuilding the rows can temporarily reset the extent and offset.
+        // Do not consume the request against that intermediate layout.
+        var expectedExtent = _rows.Children.Count * 44.0 - 1;
+        if (_scroll.ExtentHeight + .5 < expectedExtent)
+            return;
         var top = rowIndex * 44.0;
         var bottom = top + 43;
         var offset = _scroll.VerticalOffset;
@@ -103,9 +119,15 @@ public sealed class LayerPanel : UserControl
             offset = top;
         else if (bottom > offset + _scroll.ViewportHeight)
             offset = bottom - _scroll.ViewportHeight;
-        _revealSelection = false;
+        offset = Math.Clamp(offset, 0, Math.Max(0, _scroll.ScrollableHeight));
         if (Math.Abs(offset - _scroll.VerticalOffset) > .5)
-            _scroll.ChangeView(null, Math.Clamp(offset, 0, Math.Max(0, _scroll.ScrollableHeight)), null, true);
+        {
+            // ChangeView may schedule its offset update. Verify the resulting offset
+            // on the next layout instead of marking an unpresented request complete.
+            _scroll.ChangeView(null, offset, null, true);
+            return;
+        }
+        _revealSelection = false;
     }
 
     public void Refresh()
@@ -117,8 +139,13 @@ public sealed class LayerPanel : UserControl
         if (_lastActive != session.Document.ActiveLayerId)
         {
             _lastActive = session.Document.ActiveLayerId;
-            _revealSelection = true;
+            _followActiveSelection = true;
         }
+        if (session.Document.EditMask)
+            _followActiveSelection = true;
+        // Undo/redo and same-layer property edits rebuild rows too, so identity
+        // changes alone are not a sufficient condition for restoring visibility.
+        _revealSelection |= _followActiveSelection;
         _addMask.IsEnabled = active is { Locked: false, Mask: null };
         _deleteLayer.IsEnabled = active is { Locked: false };
         _settings.Children.Clear();
