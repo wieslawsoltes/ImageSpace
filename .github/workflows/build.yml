@@ -28,11 +28,15 @@ jobs:
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
           dotnet run --project tests/ImageSpace.MaskTests -c Release
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
+          dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
+          dotnet run --project tests/ImageSpace.Benchmarks -c Release
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ImageSpace-engine-validation
-          path: artifacts/*tests.json
+          path: |
+            artifacts/*tests.json
+            artifacts/performance-results.json
       - name: Install browser workload
         run: dotnet workload install wasm-tools --skip-manifest-update
       - name: Fetch open font assets

@@ -31,6 +31,8 @@ jobs:
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
           dotnet run --project tests/ImageSpace.MaskTests -c Release
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
+          dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
+          dotnet run --project tests/ImageSpace.Benchmarks -c Release
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
             case "$project" in */ImageSpace.App/*) continue ;; esac
