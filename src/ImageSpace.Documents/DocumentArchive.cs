@@ -239,10 +239,8 @@ public static class DocumentArchive
                 for (var y = 0; y < height; y++)
                 {
                     stream.ReadExactly(row);
-                    // Retain the existing native-format canonicalization of transparent RGB.
-                    for (var x = 0; x < width; x++)
-                    if (row[x * 4 + 3] == 0)
-                        row.Slice(x * 4, 4).Clear();
+                    // Native archives preserve authored RGBA bytes, including RGB under zero alpha.
+                    // PixelSurface.WriteRow retains these bytes without a per-pixel normalization pass.
                     result.WriteRow(0, y, row);
                 }
                 if (stream.ReadByte() != -1)
