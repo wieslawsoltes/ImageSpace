@@ -30,6 +30,8 @@ public sealed partial class ImageViewport : UserControl, IDisposable
             CancelGesture();
             _session.Changed -= Changed;
             _session = value;
+            _maskPreview = MaskPreviewMode.Composite;
+            _previewLayerId = Guid.Empty;
             _session.Changed += Changed;
             _fitPending = true;
             Invalidate();
@@ -75,7 +77,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         _canvas.PointerWheelChanged += Wheel;
         _canvas.PointerCanceled += (_, _) => CancelGesture();
         _canvas.PointerCaptureLost += (_, _) => { if (_gesture != "") CancelGesture(); };
-        _canvas.DoubleTapped += (_, e) => { if (_session.Document.ActiveLayer is { Kind: LayerKind.Text } layer) TextEditRequested?.Invoke(layer); e.Handled = true; };
+        _canvas.DoubleTapped += (_, e) => { if (!_session.Document.EditMask && _session.Document.ActiveLayer is { Kind: LayerKind.Text } layer) TextEditRequested?.Invoke(layer); e.Handled = true; };
         SizeChanged += (_, _) => { if (_fitPending && ActualWidth > 50 && ActualHeight > 50) Fit(); Invalidate(); };
         _ants.Tick += (_, _) => { if (_session.Document.Selection is not null || _gesture == "selection") { _dashOffset += 1; Invalidate(); } };
         Loaded += (_, _) => _ants.Start();
@@ -83,6 +85,12 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     }
     private void Changed(object? sender, EventArgs e)
     {
+        if (!_session.Document.EditMask || _session.Document.ActiveLayer?.Mask is null ||
+            _previewLayerId != _session.Document.ActiveLayerId)
+        {
+            _maskPreview = MaskPreviewMode.Composite;
+            _previewLayerId = _session.Document.ActiveLayerId;
+        }
         Invalidate();
     }
     public void Invalidate() => _canvas.Invalidate();
@@ -153,16 +161,16 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         {
             if (Tool == EditorTool.Move)
             {
-                if (layer is not null && ShowTransform)
+                if (layer is not null && ShowTransform && (layer.Kind != LayerKind.Adjustment || doc.EditMask))
                     _handle = HitHandle(layer, _cursor);
-                if (_handle < 0)
+                if (_handle < 0 && !doc.EditMask)
                 {
                     layer = HitLayer(_start);
                     if (layer is null)
                         return;
                     _session.SelectLayer(layer.Id);
                 }
-                if (layer!.Locked)
+                if (layer is null || layer.Locked)
                     return;
                 _original = layer.Snapshot();
                 _session.Begin(_handle == 8 ? "Rotate layer" : _handle >= 0 ? "Transform layer" : "Move layer");
@@ -195,25 +203,27 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 };
                 doc.Layers.Add(layer);
                 doc.ActiveLayerId = layer.Id;
+                doc.EditMask = false;
                 _gesture = "shape";
             }
             else
             {
-                if (layer?.Pixels is null || layer.Locked)
-                    throw new InvalidOperationException("Select an unlocked pixel layer, or add a new layer with the + button.");
                 if (Tool == EditorTool.Wand)
                 {
                     var composite = Renderer.Rasterize(doc);
-                    var selection = Selections.Contiguous(composite, (int)_start.X, (int)_start.Y, Tolerance);
+                    var selection = Selections.Contiguous(composite, (int)MathF.Floor(_start.X), (int)MathF.Floor(_start.Y), Tolerance);
                     _session.Execute("Magic wand", d => d.Selection = Selections.Combine(d.Selection, selection, Combine(e.KeyModifiers)));
                     e.Handled = true;
                     return;
                 }
+                if (layer is null) throw new InvalidOperationException("Select a pixel layer or its mask.");
+                var editableSurface = PixelTarget.RequireEditable(doc, layer);
                 if (Tool == EditorTool.Fill)
                 {
                     var local = layer.ToLocal(_start);
-                    var region = Selections.Contiguous(layer.Pixels, (int)local.X, (int)local.Y, Tolerance);
-                    _session.Execute("Paint bucket", d => RasterOperations.Fill(d, layer, Foreground, region));
+                    var sampled = doc.EditMask ? MaskOperations.ToGrayscale(editableSurface) : editableSurface;
+                    var region = Selections.Contiguous(sampled, (int)MathF.Floor(local.X), (int)MathF.Floor(local.Y), Tolerance);
+                    _session.Execute("Paint bucket", d => PixelEdits.Fill(d, layer, Foreground, region));
                     e.Handled = true;
                     return;
                 }
@@ -223,9 +233,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 {
                     if (Tool == EditorTool.Clone && _cloneSource is null)
                         throw new InvalidOperationException("Alt-click to set the clone source first.");
-                    var target = doc.EditMask ? layer.Mask : layer.Pixels;
-                    if (target is null)
-                        throw new InvalidOperationException("Add a layer mask before painting it.");
+                    var target = PixelTarget.RequireEditable(doc, layer);
                     var offset = _cloneSource is null ? Vector2.Zero : layer.ToLocal(_cloneSource.Value) - layer.ToLocal(_start);
                     _brush.Begin(target, offset);
                     Paint(point);
@@ -315,21 +323,9 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 var selection = Tool == EditorTool.Lasso ? Selections.Polygon(d.Width, d.Height, _lasso) : Selections.Rectangle(d.Width, d.Height, _start, _last, Tool == EditorTool.EllipseSelect);
                 _session.Execute("Selection", doc => doc.Selection = Selections.Combine(doc.Selection, selection, Combine(e.KeyModifiers)));
             }
-            else if (gesture == "gradient" && layer?.Pixels is not null)
+            else if (gesture == "gradient" && layer is not null)
             {
-                var delta = _last - _start;
-                var length = delta.LengthSquared();
-                if (length < .01f)
-                    length = 1;
-                for (var y = 0; y < layer.Pixels.Height; y++)
-                for (var x = 0; x < layer.Pixels.Width; x++)
-                {
-                    var pos = layer.ToDocument(new(x, y));
-                    var t = Math.Clamp(Vector2.Dot(pos - _start, delta) / length, 0, 1);
-                    var ink = Rgba32.Lerp(Foreground, BackgroundColor, t);
-                    var coverage = _session.Document.Coverage((int)pos.X, (int)pos.Y);
-                    layer.Pixels.Set(x, y, Rgba32.Over(layer.Pixels.Get(x, y), ink, coverage));
-                }
+                PixelEdits.Gradient(_session.Document, layer, _start, _last, Foreground, BackgroundColor);
             }
             if (_session.IsInTransaction)
                 _session.Commit();
@@ -451,6 +447,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     {
         _ants.Stop();
         _session.Changed -= Changed;
+        _maskPreviewRenderer.Dispose();
         Renderer.Dispose();
         _selectionPath?.Dispose();
     }

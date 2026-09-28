@@ -14,4 +14,8 @@
   </Folder>
   <Folder Name="/Applications/"><Project Path="src/ImageSpace.App/ImageSpace.App.csproj" /></Folder>
   <Folder Name="/Tests/"><Project Path="tests/ImageSpace.Tests/ImageSpace.Tests.csproj" /><Project Path="tests/ImageSpace.RegressionTests/ImageSpace.RegressionTests.csproj" /></Folder>
+  <Folder Name="/MaskTests/">
+    <Project Path="tests/ImageSpace.MaskTests/ImageSpace.MaskTests.csproj" />
+    <Project Path="tests/ImageSpace.MaskEditingTests/ImageSpace.MaskEditingTests.csproj" />
+  </Folder>
 </Solution>

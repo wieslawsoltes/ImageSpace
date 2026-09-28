@@ -8,7 +8,7 @@ public sealed partial class StudioWorkbench
     {
         var active = Session.Document.ActiveLayer;
         var has = active is not null;
-        var pixels = active?.Pixels is not null;
+        var pixels = PixelTarget.Get(Session.Document, active) is not null;
         var editable = has && !active!.Locked;
         List<(string Label, string Shortcut, Action Action, bool Enabled)> items = [];
         void Item(string label, string shortcut, Action action, bool enabled = true) => items.Add((label, shortcut, action, enabled));
@@ -34,7 +34,7 @@ public sealed partial class StudioWorkbench
                 Item("Undo" + (Session.History.Count > 0 ? " " + Session.History[^1].Name : ""), "Ctrl+Z", () => Run(Session.Undo), Session.CanUndo);
                 Item("Redo", "Ctrl+Shift+Z", () => Run(Session.Redo), Session.CanRedo);
                 Line();
-                Item("Cut", "Ctrl+X", () => Copy(true), editable && pixels);
+                Item("Cut", "Ctrl+X", () => Copy(true), editable && pixels && !Session.Document.EditMask);
                 Item("Copy merged", "Ctrl+C", () => Copy(false));
                 Item("Paste as new layer", "Ctrl+V", Paste, _clipboard is not null);
                 Item("Clear selected pixels", "Delete", () => Run(Session.ClearPixels), editable && pixels);
@@ -71,16 +71,11 @@ public sealed partial class StudioWorkbench
                 Item("Merge down", "Ctrl+E", MergeDown, editable && Session.Document.Layers.IndexOf(active!) > 0);
                 Item("Flatten image…", "", () => _ = FlattenAsync());
                 Line();
-                Item("Add layer mask", "", () => Run(Session.AddMask), editable && active?.Kind != LayerKind.Adjustment);
-                Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "", () => Run(() => Session.Execute("Toggle mask", document =>
-                {
-                    if (document.ActiveLayer is { } layer) layer.MaskEnabled = !layer.MaskEnabled;
-                })), active?.Mask is not null);
-                Item("Delete mask", "", () => Run(() => Session.Execute("Delete mask", document =>
-                {
-                    if (document.ActiveLayer is { } layer) layer.Mask = null;
-                    document.EditMask = false;
-                })), active?.Mask is not null);
+                Item("Add layer mask", "", () => Run(Session.AddMask), editable && active?.Mask is null);
+                Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "",
+                    () => Run(() => Session.SetMaskEnabled(active?.MaskEnabled == false)), editable && active?.Mask is not null);
+                Item("Invert mask", "", () => Run(Session.InvertMask), editable && active?.Mask is not null);
+                Item("Delete mask", "", () => Run(Session.DeleteMask), editable && active?.Mask is not null);
                 Line();
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
@@ -99,8 +94,9 @@ public sealed partial class StudioWorkbench
                 Item("Inverse", "Ctrl+Shift+I", InvertSelection);
                 Line();
                 Item("Feather…", "", () => _ = FeatherAsync(), Session.Document.Selection is not null);
-                Item("Select layer alpha", "", SelectLayerAlpha, has && active?.Kind != LayerKind.Adjustment);
-                Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable && active?.Kind != LayerKind.Adjustment);
+                Item(Session.Document.EditMask ? "Select mask coverage" : "Select layer alpha", "", SelectLayerAlpha,
+                    has && (Session.Document.EditMask ? active?.Mask is not null : active?.Kind != LayerKind.Adjustment));
+                Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable && active?.Mask is null);
                 break;
             case "Filter":
                 Item("Gaussian blur…", "", () => _ = FilterDialogAsync(FilterKind.GaussianBlur), editable && pixels);

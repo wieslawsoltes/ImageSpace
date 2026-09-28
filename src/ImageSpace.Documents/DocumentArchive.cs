@@ -36,6 +36,16 @@ public static class DocumentArchive
         public int MaskHeight { get; set; }
     }
 
+    private static int RequiredVersion(ImageDocument document)
+    {
+        // Existing version-1/2 readers ignore new metadata. Refuse that silent visual loss
+        // by marking any mask-specific or output-crossfade semantics as version 3.
+        if (document.Layers.Any(layer =>
+            (layer.Mask is not null && (layer.Kind == LayerKind.Adjustment || layer.MaskDensity != 1 || layer.MaskFeather != 0)) ||
+            (layer.Kind == LayerKind.Adjustment && layer.Opacity is > 0 and < 1))) return 3;
+        return document.Layers.Any(layer => layer.Adjustment is AdjustmentKind.Curves or AdjustmentKind.Levels) ? 2 : 1;
+    }
+
     public static byte[] Save(ImageDocument document)
     {
         document.Validate();
@@ -51,7 +61,7 @@ public static class DocumentArchive
             var manifest = new Manifest
             {
                 // Older readers must reject, rather than silently drop, the new adjustment semantics.
-                Version = document.Layers.Any(layer => layer.Adjustment is AdjustmentKind.Curves or AdjustmentKind.Levels) ? 2 : 1,
+                Version = RequiredVersion(document),
                 Id = document.Id, Name = document.Name, Width = document.Width, Height = document.Height,
                 Dpi = document.Dpi, ActiveLayerId = document.ActiveLayerId
             };
@@ -120,7 +130,7 @@ public static class DocumentArchive
         }
         var manifest = JsonSerializer.Deserialize<Manifest>(Read("manifest.json", 4 * 1024 * 1024), Json)
             ?? throw new InvalidDataException("Missing document manifest.");
-        if (manifest.Version is not (1 or 2))
+        if (manifest.Version is not (1 or 2 or 3))
         {
             throw new InvalidDataException($"Unsupported document version {manifest.Version}.");
         }

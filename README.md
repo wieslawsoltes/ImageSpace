@@ -52,6 +52,12 @@ An independently reusable browser WebGPU module accelerates invert, grayscale, s
 
 The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** and **SkiaSharp 3.119.2**. Managed/native Skia ABI compatibility is intentional; independently changing only one side is not a supported upgrade.
 
+## Adjustment-mask editing
+
+Pixel, type, shape and adjustment masks share the same editing target pipeline. The mask inspector provides density, feather, inversion, enable/disable and view-only grayscale/red-overlay inspection. Painting and filters modify authored coverage, never the underlying layer pixels. Density/feather remain independently editable. Masks currently share their layer transform; groups and independent mask transforms are not yet supported.
+
+[Mask editing architecture and verification](docs/mask-editing.md) covers alpha compositing, archive version 3, regression coverage and the exact supported boundary.
+
 ## Reusable libraries
 
 | Package | Responsibility |

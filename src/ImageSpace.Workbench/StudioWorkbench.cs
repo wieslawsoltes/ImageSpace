@@ -114,6 +114,7 @@ public sealed partial class StudioWorkbench : UserControl, IDisposable
         _layers.AddMaskRequested += () => Run(() => Session.AddMask());
         _layers.AddAdjustmentRequested += () => ShowAdjustmentMenu(_layers);
         _layers.RenameRequested += () => _ = RenameLayerAsync();
+        _properties.MaskPreviewChanged += Surface.SetMaskPreview;
         _properties.Error += ShowStatus;
         _properties.TextEditRequested += l => _ = EditTextAsync(l);
         _recoveryTimer.Tick += async (_, _) => await RecoverAsync();

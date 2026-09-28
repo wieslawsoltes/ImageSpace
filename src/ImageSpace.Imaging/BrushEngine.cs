@@ -22,7 +22,7 @@ public sealed class BrushEngine
     {
         if (layer.Locked)
             return;
-        var target = document.EditMask ? layer.Mask : layer.Pixels;
+        var target = PixelTarget.Get(document, layer);
         if (target is null)
             return;
         var point = layer.ToLocal(position);
@@ -63,8 +63,7 @@ public sealed class BrushEngine
                     continue;
                 var hardness = mode == PaintMode.Pencil ? 1 : Math.Clamp(settings.Hardness, 0, 1);
                 var edge = distance <= hardness ? 1 : Math.Clamp((1 - distance) / Math.Max(0.001f, 1 - hardness), 0, 1);
-                var dp = layer.ToDocument(new(x + 0.5f, y + 0.5f));
-                var coverage = document.Coverage((int)dp.X, (int)dp.Y);
+                var coverage = PixelTarget.Coverage(document, layer, x, y);
                 var alpha = Math.Clamp(edge * settings.Opacity * settings.Flow * force * coverage, 0, 1);
                 if (alpha <= 0)
                     continue;
@@ -72,9 +71,19 @@ public sealed class BrushEngine
                 var ink = color;
                 if (document.EditMask)
                 {
-                    var luminance = (color.R * 0.2126f + color.G * 0.7152f + color.B * 0.0722f) / 255;
-                    var a = Rgba32.Byte(old.A + (255 * luminance - old.A) * alpha);
-                    target.Set(x, y, new(255, 255, 255, a));
+                    var value = mode switch
+                    {
+                        PaintMode.Eraser => (byte)0,
+                        PaintMode.Clone => _source?.Get((int)MathF.Floor(x + _cloneOffset.X),
+                            (int)MathF.Floor(y + _cloneOffset.Y)).A ?? old.A,
+                        PaintMode.Dodge => Rgba32.Byte(old.A * 1.15 + 10),
+                        PaintMode.Burn => Rgba32.Byte(old.A * .85),
+                        PaintMode.Smudge => _source?.Get((int)MathF.Floor(_previous?.X ?? p.X),
+                            (int)MathF.Floor(_previous?.Y ?? p.Y)).A ?? old.A,
+                        _ => MaskOperations.Luminance(color)
+                    };
+                    var strength = mode is PaintMode.Brush or PaintMode.Pencil ? alpha * color.A / 255f : alpha;
+                    target.Set(x, y, MaskOperations.CoverageColor(Rgba32.Byte(old.A + (value - old.A) * strength)));
                     continue;
                 }
                 if (mode == PaintMode.Eraser)

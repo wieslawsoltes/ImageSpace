@@ -82,15 +82,7 @@ public static class RasterOperations
     }
     public static void Fill(ImageDocument document, Layer layer, Rgba32 color, PixelSurface? region = null)
     {
-        if (layer.Locked || layer.Pixels is null)
-            return;
-        for (var y = 0; y < layer.Pixels.Height; y++)
-        for (var x = 0; x < layer.Pixels.Width; x++)
-        {
-            var p = layer.ToDocument(new(x, y));
-            var coverage = document.Coverage((int)p.X, (int)p.Y) * (region?.Get(x, y).A / 255f ?? 1);
-            if (coverage > 0)
-                layer.Pixels.Set(x, y, Rgba32.Over(layer.Pixels.Get(x, y), color, coverage));
-        }
+        if (layer.Locked || PixelTarget.Get(document, layer) is null) return;
+        PixelEdits.Fill(document, layer, color, region);
     }
 }
