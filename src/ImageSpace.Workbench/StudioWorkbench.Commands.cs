@@ -78,6 +78,7 @@ public sealed partial class StudioWorkbench
                     () => Run(() => Session.SetMaskLinked(active?.MaskLinked == false)), editable && active?.Mask is not null);
                 Item("Align mask to layer", "", () => Run(Session.AlignMaskToLayer), editable && active?.Mask is not null);
                 Item("Invert mask", "", () => Run(Session.InvertMask), editable && active?.Mask is not null);
+                Item("Apply layer mask", "", ApplyLayerMask, Session.CanApplyLayerMask);
                 Item("Delete mask", "", () => Run(Session.DeleteMask), editable && active?.Mask is not null);
                 Line();
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
@@ -146,6 +147,7 @@ public sealed partial class StudioWorkbench
             default:
                 Item("ImageSpace user guide", "F1", () => _ = HelpAsync());
                 Item("Features and compatibility", "", () => _ = CapabilitiesAsync());
+                Item("Applying masks and rendering", "", () => _ = ShowTextAsync("Applying masks and rendering", MaskApplicationHelp));
                 Item("Rendering diagnostics", "", () => _ = DiagnosticsAsync());
                 Item("About ImageSpace", "", () => _ = AboutAsync());
                 break;

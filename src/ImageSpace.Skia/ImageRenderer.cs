@@ -11,18 +11,21 @@ public sealed partial class ImageRenderer : IDisposable
     private readonly AdjustmentFilterCache _adjustments = new();
     private readonly MaskFilterCache _masks = new();
     private SKTypeface? _typeface;
-    public double LastRenderMilliseconds
-    {
-        get; private set;
-    }
-    public long TileUploads
-    {
-        get; private set;
-    }
+    public double LastRenderMilliseconds { get; private set; }
+    public long TileUploads { get; private set; }
     public long ToneFilterBuilds => _adjustments.ToneFilterBuilds;
     public long MaskFilterBuilds => _masks.Builds;
     public long MaskSourceBuilds => _masks.SourceBuilds;
     public int CachedTiles => _tiles.Count;
+
+    /// <summary>
+    /// Allows opaque, normal-blend, effectively unmasked layers to draw directly.
+    /// Disable for differential validation against the always-isolated reference path.
+    /// Document isolation is retained regardless of this setting.
+    /// </summary>
+    public bool EnableDirectLayerDrawing { get; set; } = true;
+    public long DirectLayerDraws { get; private set; }
+    public long IsolatedLayerDraws { get; private set; }
 
     public void SetTypeface(SKTypeface typeface)
     {
@@ -32,12 +35,12 @@ public sealed partial class ImageRenderer : IDisposable
 
     public void Draw(SKCanvas canvas, ImageDocument document)
     {
-        var watch = Stopwatch.StartNew();
+        var started = Stopwatch.GetTimestamp();
         var save = canvas.Save();
         try
         {
             canvas.ClipRect(new SKRect(0, 0, document.Width, document.Height));
-            // Isolate document blend modes and effects from presentation chrome/JPEG backgrounds.
+            // Never blend document effects against workspace chrome or the JPEG background.
             canvas.SaveLayer();
             DrawRange(document.Layers.Count - 1);
             canvas.Restore();
@@ -45,9 +48,10 @@ public sealed partial class ImageRenderer : IDisposable
         finally { canvas.RestoreToCount(save); }
         _masks.Prune(document);
         _adjustments.Prune(document);
-        LastRenderMilliseconds = watch.Elapsed.TotalMilliseconds;
+        LastRenderMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (_tiles.Count > 768)
             Prune(document);
+
         void DrawRange(int last)
         {
             var adjustment = -1;
@@ -97,86 +101,116 @@ public sealed partial class ImageRenderer : IDisposable
                 Persp2 = 1
             };
             canvas.Concat(in matrix);
+            var masked = layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0;
+            var direct = EnableDirectLayerDrawing && !masked &&
+                (ignoreOpacity || (layer.Opacity == 1 && layer.Blend == LayerBlend.Normal));
+            if (direct)
+            {
+                // SrcOver with unit group opacity needs no per-layer offscreen surface.
+                // This also avoids constructing paints for ordinary raster layers.
+                DirectLayerDraws++;
+                DrawContent(canvas, layer);
+                return;
+            }
+
+            IsolatedLayerDraws++;
             using var composite = new SKPaint
             {
                 Color = SKColors.White.WithAlpha(ignoreOpacity ? (byte)255 : Rgba32.Byte(layer.Opacity * 255)),
                 BlendMode = ignoreOpacity ? SKBlendMode.SrcOver : Blend(layer.Blend)
             };
             canvas.SaveLayer(composite);
-            using var paint = new SKPaint { IsAntialias = true, Color = Color(layer.Color) };
-            switch (layer.Kind)
-            {
-                case LayerKind.Raster:
-                    if (layer.Pixels is not null)
-                        DrawTiles(canvas, layer.Pixels);
-                    break;
-                case LayerKind.Text:
-                    using (var font = new SKFont(_typeface ?? SKTypeface.Default, layer.FontSize))
-                    {
-                        font.Embolden = layer.Bold;
-                        var y = layer.FontSize;
-                        foreach (var line in layer.Text.Replace("\r", "").Split('\n'))
-                        {
-                            canvas.DrawText(line, 0, y, SKTextAlign.Left, font, paint);
-                            y += layer.FontSize * 1.16f;
-                        }
-                    }
-                    break;
-                case LayerKind.Rectangle:
-                    canvas.DrawRoundRect(new SKRect(0, 0, layer.Width, layer.Height), layer.CornerRadius, layer.CornerRadius, paint);
-                    break;
-                case LayerKind.Ellipse:
-                    canvas.DrawOval(new SKRect(0, 0, layer.Width, layer.Height), paint);
-                    break;
-            }
-            if (layer.StrokeWidth > 0 && layer.Kind is LayerKind.Rectangle or LayerKind.Ellipse)
-            {
-                paint.Style = SKPaintStyle.Stroke;
-                paint.StrokeWidth = layer.StrokeWidth;
-                paint.Color = Color(layer.StrokeColor);
-                if (layer.Kind == LayerKind.Ellipse)
-                    canvas.DrawOval(new SKRect(0, 0, layer.Width, layer.Height), paint);
-                else
-                    canvas.DrawRoundRect(new SKRect(0, 0, layer.Width, layer.Height), layer.CornerRadius, layer.CornerRadius, paint);
-            }
-            if (layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0)
+            DrawContent(canvas, layer);
+            if (masked)
             {
                 var coverage = _masks.Get(layer, canvas.LocalClipBounds, false, DrawTiles);
-                // DstIn must cover the entire isolated layer, including transparent pixels
-                // outside the filter output. Drawing the filtered paint directly lets
-                // Skia cull those pixels and leaves the unmasked content visible.
-                using var maskPaint = new SKPaint { BlendMode = SKBlendMode.DstIn };
-                canvas.SaveLayer(maskPaint);
-                using var coveragePaint = new SKPaint { ImageFilter = coverage };
-                canvas.DrawPaint(coveragePaint);
-                canvas.Restore();
+                ApplyCoverage(canvas, coverage);
             }
             canvas.Restore();
         }
         finally { canvas.RestoreToCount(save); }
     }
 
+    private void DrawContent(SKCanvas canvas, Layer layer)
+    {
+        if (layer.Kind == LayerKind.Raster)
+        {
+            if (layer.Pixels is not null)
+                DrawTiles(canvas, layer.Pixels);
+            return;
+        }
+        using var paint = new SKPaint { IsAntialias = true, Color = Color(layer.Color) };
+        switch (layer.Kind)
+        {
+            case LayerKind.Text:
+                using (var font = new SKFont(_typeface ?? SKTypeface.Default, layer.FontSize))
+                {
+                    font.Embolden = layer.Bold;
+                    var y = layer.FontSize;
+                    foreach (var line in layer.Text.Replace("\r", "").Split('\n'))
+                    {
+                        canvas.DrawText(line, 0, y, SKTextAlign.Left, font, paint);
+                        y += layer.FontSize * 1.16f;
+                    }
+                }
+                break;
+            case LayerKind.Rectangle:
+                canvas.DrawRoundRect(new SKRect(0, 0, layer.Width, layer.Height), layer.CornerRadius, layer.CornerRadius, paint);
+                break;
+            case LayerKind.Ellipse:
+                canvas.DrawOval(new SKRect(0, 0, layer.Width, layer.Height), paint);
+                break;
+        }
+        if (layer.StrokeWidth > 0 && layer.Kind is LayerKind.Rectangle or LayerKind.Ellipse)
+        {
+            paint.Style = SKPaintStyle.Stroke;
+            paint.StrokeWidth = layer.StrokeWidth;
+            paint.Color = Color(layer.StrokeColor);
+            if (layer.Kind == LayerKind.Ellipse)
+                canvas.DrawOval(new SKRect(0, 0, layer.Width, layer.Height), paint);
+            else
+                canvas.DrawRoundRect(new SKRect(0, 0, layer.Width, layer.Height), layer.CornerRadius, layer.CornerRadius, paint);
+        }
+    }
+
+    private static void ApplyCoverage(SKCanvas canvas, SKImageFilter coverage)
+    {
+        // The transparent exterior must participate in DstIn. A filtered DrawPaint
+        // alone can be culled outside its output and leave source pixels unmasked.
+        using var maskPaint = new SKPaint { BlendMode = SKBlendMode.DstIn };
+        var save = canvas.SaveLayer(maskPaint);
+        try
+        {
+            using var coveragePaint = new SKPaint { ImageFilter = coverage };
+            canvas.DrawPaint(coveragePaint);
+        }
+        finally { canvas.RestoreToCount(save); }
+    }
+
     public unsafe void DrawTiles(SKCanvas canvas, PixelSurface surface)
     {
-        canvas.Save();
-        canvas.ClipRect(new SKRect(0, 0, surface.Width, surface.Height));
-        foreach (var (x, y, memory, identity) in surface.EnumerateTiles())
+        var save = canvas.Save();
+        try
         {
-            if (canvas.QuickReject(new SKRect(x, y, x + PixelSurface.TileSize, y + PixelSurface.TileSize)))
-                continue;
-            var revision = surface.GetTileRevision(x, y);
-            if (!_tiles.TryGetValue(identity, out var cached) || cached.Revision != revision)
+            canvas.ClipRect(new SKRect(0, 0, surface.Width, surface.Height));
+            foreach (var (x, y, memory, identity) in surface.EnumerateTiles())
             {
-                cached?.Image.Dispose();
-                using var bitmap = new SKBitmap(new SKImageInfo(PixelSurface.TileSize, PixelSurface.TileSize, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-                memory.Span.CopyTo(new Span<byte>((void*)bitmap.GetPixels(), memory.Length));
-                cached = new CachedTile(SKImage.FromBitmap(bitmap), revision);
-                _tiles[identity] = cached;
-                TileUploads++;
+                if (canvas.QuickReject(new SKRect(x, y, x + PixelSurface.TileSize, y + PixelSurface.TileSize)))
+                    continue;
+                var revision = surface.GetTileRevision(x, y);
+                if (!_tiles.TryGetValue(identity, out var cached) || cached.Revision != revision)
+                {
+                    cached?.Image.Dispose();
+                    using var bitmap = new SKBitmap(new SKImageInfo(PixelSurface.TileSize, PixelSurface.TileSize, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+                    memory.Span.CopyTo(new Span<byte>((void*)bitmap.GetPixels(), memory.Length));
+                    cached = new CachedTile(SKImage.FromBitmap(bitmap), revision);
+                    _tiles[identity] = cached;
+                    TileUploads++;
+                }
+                canvas.DrawImage(cached.Image, x, y);
             }
-            canvas.DrawImage(cached.Image, x, y);
         }
-        canvas.Restore();
+        finally { canvas.RestoreToCount(save); }
     }
 
     public PixelSurface Rasterize(ImageDocument document) => RasterizePreview(document, Math.Max(document.Width, document.Height));
