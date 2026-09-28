@@ -1,0 +1,44 @@
+name: Import mask placement and contour implementation
+on:
+  push:
+    branches: [feat/mask-placement-contours]
+    paths: [.github/workflows/import-placement.yml]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: feat/mask-placement-contours
+      - name: Verify and apply source changes
+        run: |
+          git merge-base --is-ancestor c77d49c40ebd0d4cb5f5b6e9f9c4e30001059e80 HEAD
+          git diff --exit-code c77d49c40ebd0d4cb5f5b6e9f9c4e30001059e80 -- src tests docs README.md CHANGELOG.md ImageSpace.slnx Directory.Build.props scripts packages
+          python3 - <<'PY'
+          import base64,hashlib,lzma
+          from pathlib import Path
+          encoded=''.join(Path(f'.github/placement/{i}.b64').read_text() for i in range(3))
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert len(patch)==191211
+          assert hashlib.sha256(patch).hexdigest()=='f6b63b00bfbde20acb25c8742c0d5b351dbd5ff36ac6385ae4f7c1297e6b2cf3'
+          Path('/tmp/imagespace-placement.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/imagespace-placement.patch
+          git apply /tmp/imagespace-placement.patch
+          rm -r .github/placement
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Implement independent affine mask placement, streaming contours and prepared pixel mappings'
+          git push origin HEAD:feat/mask-placement-contours
+          mkdir -p artifacts
+          git archive --format=zip HEAD -o artifacts/placement-source.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ImageSpace-applied-placement-source
+          path: artifacts/placement-source.zip
