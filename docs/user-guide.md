@@ -78,3 +78,11 @@ A recovery copy of the active tab is saved locally after committed changes, appr
 | F1 | In-app guide |
 
 Browsers reserve some shortcuts, especially Ctrl+L. The corresponding menu commands remain available. Text fields retain normal editing keys instead of triggering canvas tools. See [features](features.md) for limits and unsupported capabilities.
+
+## Modify a selection
+
+Select → Expand selection, Contract selection, Border selection and Smooth selection open a radius control (0–256 pixels). These operations preserve soft alpha instead of thresholding it. The neighborhood is square, with a diameter of `2 × radius + 1`; pixels outside the canvas are unselected. Smooth performs an opening followed by a closing. Each operation is one undo entry; these are explicit ImageSpace kernels, not a claim of identical Photoshop edge shaping.
+
+## Extended PSD interchange
+
+PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names and resolution are retained. Simple user-mask data is placed into the pixel layer’s coordinates, honoring disabled/inverted/default coverage and supported density/feather parameters. Layer masks remain editable after import. Embedded profiles, vector/group/clipping semantics and advanced metadata are warned about rather than silently claimed to survive. Export uses ZIP raster channels by default; application shapes/type/transforms and masks are still rasterized by the export callback.

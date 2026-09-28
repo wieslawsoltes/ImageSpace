@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0-alpha.1 — 2026-09-28
+
+- Merged all pending mask/compositor and dependency work; aligned Skia 3.119.4 and current CI Actions.
+- Fixed small-mask clipping with an isolated destination-in pass.
+- Added bounded RGB/8 PSD ZIP/prediction decoding, compressed raster export, Unicode names, DPI, and placed user masks.
+- Added Expand, Contract, Border and Smooth selection operations with soft-coverage preservation and transactional Undo.
+- Optimized tile fills/imports, row operations, resizing, crop, flip, histogram, native Skia transfers and streamed archives.
+- Added independent PSD/geometry/storage regressions, browser compatibility tests and reproducible CPU A/B benchmarks.
+- Full Photoshop parity remains explicitly out of scope for this release; see the feature matrix.
+
+
 ## 0.1.0-alpha.1 — development, 2026-09-27
 
 ### Tonal editing and deployment follow-up

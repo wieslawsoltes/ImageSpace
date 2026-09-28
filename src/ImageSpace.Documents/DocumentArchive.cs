@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Runtime.InteropServices;
 using System.IO.Compression;
 using System.Text.Json;
 using ImageSpace.Core;
@@ -10,30 +12,62 @@ public static class DocumentArchive
     private const long MaximumExpandedBytes = 384L * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true, MaxDepth = 32
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        MaxDepth = 32
     };
 
     public sealed class Manifest
     {
         public int Version { get; set; } = 1;
-        public Guid Id { get; set; }
+        public Guid Id
+        {
+            get; set;
+        }
         public string Name { get; set; } = "Untitled";
-        public int Width { get; set; }
-        public int Height { get; set; }
+        public int Width
+        {
+            get; set;
+        }
+        public int Height
+        {
+            get; set;
+        }
         public double Dpi { get; set; } = 72;
-        public Guid ActiveLayerId { get; set; }
+        public Guid ActiveLayerId
+        {
+            get; set;
+        }
         public List<LayerRecord> Layers { get; set; } = [];
     }
 
     public sealed class LayerRecord
     {
         public Layer Metadata { get; set; } = new();
-        public string? Pixels { get; set; }
-        public string? Mask { get; set; }
-        public int PixelWidth { get; set; }
-        public int PixelHeight { get; set; }
-        public int MaskWidth { get; set; }
-        public int MaskHeight { get; set; }
+        public string? Pixels
+        {
+            get; set;
+        }
+        public string? Mask
+        {
+            get; set;
+        }
+        public int PixelWidth
+        {
+            get; set;
+        }
+        public int PixelHeight
+        {
+            get; set;
+        }
+        public int MaskWidth
+        {
+            get; set;
+        }
+        public int MaskHeight
+        {
+            get; set;
+        }
     }
 
     private static int RequiredVersion(ImageDocument document)
@@ -42,7 +76,8 @@ public static class DocumentArchive
         // by marking any mask-specific or output-crossfade semantics as version 3.
         if (document.Layers.Any(layer =>
             (layer.Mask is not null && (layer.Kind == LayerKind.Adjustment || layer.MaskDensity != 1 || layer.MaskFeather != 0)) ||
-            (layer.Kind == LayerKind.Adjustment && layer.Opacity is > 0 and < 1))) return 3;
+            (layer.Kind == LayerKind.Adjustment && layer.Opacity is > 0 and < 1)))
+            return 3;
         return document.Layers.Any(layer => layer.Adjustment is AdjustmentKind.Curves or AdjustmentKind.Levels) ? 2 : 1;
     }
 
@@ -62,8 +97,12 @@ public static class DocumentArchive
             {
                 // Older readers must reject, rather than silently drop, the new adjustment semantics.
                 Version = RequiredVersion(document),
-                Id = document.Id, Name = document.Name, Width = document.Width, Height = document.Height,
-                Dpi = document.Dpi, ActiveLayerId = document.ActiveLayerId
+                Id = document.Id,
+                Name = document.Name,
+                Width = document.Width,
+                Height = document.Height,
+                Dpi = document.Dpi,
+                ActiveLayerId = document.ActiveLayerId
             };
             long expanded = 0;
             foreach (var layer in document.Layers)
@@ -77,14 +116,14 @@ public static class DocumentArchive
                     record.Pixels = $"layers/{layer.Id:N}.rgba";
                     record.PixelWidth = layer.Pixels.Width;
                     record.PixelHeight = layer.Pixels.Height;
-                    Write(record.Pixels, layer.Pixels.ToRgba());
+                    WriteSurface(record.Pixels, layer.Pixels);
                 }
                 if (layer.Mask is not null)
                 {
                     record.Mask = $"masks/{layer.Id:N}.rgba";
                     record.MaskWidth = layer.Mask.Width;
                     record.MaskHeight = layer.Mask.Height;
-                    Write(record.Mask, layer.Mask.ToRgba());
+                    WriteSurface(record.Mask, layer.Mask);
                 }
                 manifest.Layers.Add(record);
             }
@@ -94,6 +133,26 @@ public static class DocumentArchive
                 throw new InvalidDataException("Document metadata exceeds the 4 MiB manifest limit.");
             }
             Write("manifest.json", json);
+            void WriteSurface(string path, PixelSurface surface)
+            {
+                expanded += (long)surface.Width * surface.Height * 4;
+                if (expanded > MaximumExpandedBytes)
+                    throw new InvalidDataException("Document exceeds the native archive memory limit.");
+                using var entry = zip.CreateEntry(path, CompressionLevel.Fastest).Open();
+                var buffer = ArrayPool<byte>.Shared.Rent(surface.Width * 4);
+                try
+                {
+                    var row = buffer.AsSpan(0, surface.Width * 4);
+                    for (var y = 0; y < surface.Height; y++)
+                    {
+                        surface.CopyRowTo(0, y, row);
+                        entry.Write(row);
+                        if (output.Length > MaximumArchiveBytes)
+                            throw new InvalidDataException("Compressed document exceeds 128 MiB.");
+                    }
+                }
+                finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
+            }
             void Write(string path, byte[] bytes)
             {
                 expanded += bytes.Length;
@@ -118,7 +177,9 @@ public static class DocumentArchive
         {
             throw new InvalidDataException("File exceeds 128 MiB.");
         }
-        using var input = new MemoryStream(bytes.ToArray(), false);
+        if (!MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment))
+            segment = new ArraySegment<byte>(bytes.ToArray());
+        using var input = new MemoryStream(segment.Array!, segment.Offset, segment.Count, false);
         using var zip = new ZipArchive(input, ZipArchiveMode.Read);
         if (zip.Entries.Count > 260 || zip.Entries.Sum(entry => entry.Length) > MaximumExpandedBytes)
         {
@@ -140,7 +201,9 @@ public static class DocumentArchive
         }
         var document = new ImageDocument(manifest.Width, manifest.Height, manifest.Name)
         {
-            Id = manifest.Id, Dpi = manifest.Dpi, ActiveLayerId = manifest.ActiveLayerId,
+            Id = manifest.Id,
+            Dpi = manifest.Dpi,
+            ActiveLayerId = manifest.ActiveLayerId,
             Layers = manifest.Layers.Select(record => record.Metadata).ToList()
         };
         document.Validate();
@@ -152,18 +215,42 @@ public static class DocumentArchive
             if (record.Pixels is not null)
             {
                 PixelSurface.ValidateSize(record.PixelWidth, record.PixelHeight);
-                layer.Pixels = PixelSurface.FromRgba(record.PixelWidth, record.PixelHeight,
-                    Read(record.Pixels, checked(record.PixelWidth * record.PixelHeight * 4)));
+                layer.Pixels = ReadSurface(record.Pixels, record.PixelWidth, record.PixelHeight);
             }
             if (record.Mask is not null)
             {
                 PixelSurface.ValidateSize(record.MaskWidth, record.MaskHeight);
-                layer.Mask = PixelSurface.FromRgba(record.MaskWidth, record.MaskHeight,
-                    Read(record.Mask, checked(record.MaskWidth * record.MaskHeight * 4)));
+                layer.Mask = ReadSurface(record.Mask, record.MaskWidth, record.MaskHeight);
             }
         }
         return document;
 
+        PixelSurface ReadSurface(string path, int width, int height)
+        {
+            var entry = zip.GetEntry(path) ?? throw new InvalidDataException($"Missing archive entry: {path}");
+            if (entry.Length != (long)width * height * 4)
+                throw new InvalidDataException("Entry length differs from declared pixel dimensions.");
+            var result = new PixelSurface(width, height);
+            using var stream = entry.Open();
+            var buffer = ArrayPool<byte>.Shared.Rent(width * 4);
+            try
+            {
+                var row = buffer.AsSpan(0, width * 4);
+                for (var y = 0; y < height; y++)
+                {
+                    stream.ReadExactly(row);
+                    // Retain the existing native-format canonicalization of transparent RGB.
+                    for (var x = 0; x < width; x++)
+                    if (row[x * 4 + 3] == 0)
+                        row.Slice(x * 4, 4).Clear();
+                    result.WriteRow(0, y, row);
+                }
+                if (stream.ReadByte() != -1)
+                    throw new InvalidDataException("Entry exceeds declared pixel dimensions.");
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer, clearArray: true); }
+            return result;
+        }
         byte[] Read(string path, int maximum)
         {
             var entry = zip.GetEntry(path) ?? throw new InvalidDataException($"Missing archive entry: {path}");

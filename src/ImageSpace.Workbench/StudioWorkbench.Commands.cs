@@ -80,7 +80,8 @@ public sealed partial class StudioWorkbench
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
                 {
-                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
+                    if (document.ActiveLayer is { } layer)
+                        layer.Locked = !layer.Locked;
                 })), has);
                 break;
             case "Type":
@@ -94,6 +95,11 @@ public sealed partial class StudioWorkbench
                 Item("Inverse", "Ctrl+Shift+I", InvertSelection);
                 Line();
                 Item("Feather…", "", () => _ = FeatherAsync(), Session.Document.Selection is not null);
+                foreach (var modification in Enum.GetValues<SelectionModification>())
+                {
+                    var operation = modification;
+                    Item(operation + " selection…", "", () => _ = ModifySelectionAsync(operation), Session.Document.Selection is not null);
+                }
                 Item(Session.Document.EditMask ? "Select mask coverage" : "Select layer alpha", "", SelectLayerAlpha,
                     has && (Session.Document.EditMask ? active?.Mask is not null : active?.Kind != LayerKind.Adjustment));
                 Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable && active?.Mask is null);
@@ -155,8 +161,12 @@ public sealed partial class StudioWorkbench
     {
         var layer = new Layer
         {
-            Name = kind.ToString(), Kind = LayerKind.Adjustment, Adjustment = kind,
-            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0, Width = document.Width, Height = document.Height
+            Name = kind.ToString(),
+            Kind = LayerKind.Adjustment,
+            Adjustment = kind,
+            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0,
+            Width = document.Width,
+            Height = document.Height
         };
         var index = document.ActiveLayer is { } active ? document.Layers.IndexOf(active) + 1 : document.Layers.Count;
         document.Layers.Insert(index, layer);

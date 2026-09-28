@@ -17,6 +17,10 @@ dotnet build ImageSpace.slnx -c Release
 
 dotnet run --project tests/ImageSpace.Tests -c Release
 dotnet run --project tests/ImageSpace.RegressionTests -c Release
+dotnet run --project tests/ImageSpace.MaskTests -c Release
+dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
+dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
+dotnet run --project tests/ImageSpace.Benchmarks -c Release
 
 dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm \
   -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
@@ -52,7 +56,7 @@ The standalone browser kernel package can be built with:
 
 ```sh
 npm run pack:webgpu
-npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.1.0-alpha.1.tgz
+npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.2.0-alpha.1.tgz
 ```
 
 For public registry releases, configure `NUGET_API_KEY` and/or `NPM_TOKEN` in repository secrets. The default workflow does not fabricate credentials or report skipped registry publication as a release success. Signing/notarization is separate and must be configured for production native distribution.

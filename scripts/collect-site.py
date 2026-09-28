@@ -45,7 +45,7 @@ for suffix in ('.br', '.gz'):
 (args.output / 'build-info.json').write_text(json.dumps({
     'application': 'ImageSpace',
     'host': 'Uno WebAssembly',
-    'version': os.environ.get('VERSION', '0.1.0-alpha.1'),
+    'version': os.environ.get('VERSION', '0.2.0-alpha.1'),
     'commit': os.environ.get('GITHUB_SHA', 'local')
 }))
 print(f'Collected and syntax-checked real Uno application from {source}')
