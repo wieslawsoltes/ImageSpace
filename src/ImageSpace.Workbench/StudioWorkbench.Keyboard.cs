@@ -71,6 +71,7 @@ public sealed partial class StudioWorkbench
                 VirtualKey.S => () => _ = SaveAsync(),
                 VirtualKey.Z => () => Run(shift ? Session.Redo : Session.Undo),
                 VirtualKey.Y => () => Run(Session.Redo),
+                VirtualKey.G when alt => () => Run(Session.ToggleClippingMask),
                 VirtualKey.J => () => Run(Session.DuplicateLayer),
                 VirtualKey.A => SelectAll,
                 VirtualKey.D => Deselect,
@@ -83,8 +84,10 @@ public sealed partial class StudioWorkbench
                 VirtualKey.L => () => AddAdjustment(AdjustmentKind.Levels),
                 VirtualKey.Number0 => Surface.Fit,
                 VirtualKey.Number1 => () => Surface.SetZoom(1),
-                VirtualKey.R => () => { Surface.ShowRulers = !Surface.ShowRulers; Surface.Invalidate(); },
-                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); },
+                VirtualKey.R => () => { Surface.ShowRulers = !Surface.ShowRulers; Surface.Invalidate(); }
+                ,
+                VirtualKey.T => () => { SelectTool(EditorTool.Move); Surface.ShowTransform = true; Surface.InvalidateOverlay(); }
+                ,
                 VirtualKey.Back => () => Fill(Surface.BackgroundColor),
                 _ => null
             };

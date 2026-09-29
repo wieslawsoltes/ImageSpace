@@ -19,6 +19,7 @@ public sealed partial class StudioWorkbench
                 Item("New…", "Ctrl+N", () => _ = NewAsync());
                 Item("Open…", "Ctrl+O", () => _ = OpenAsync(false));
                 Item("Place image…", "", () => _ = OpenAsync(true));
+                Item("Clipping mask study", "", () => Run(() => AddDocument(ClippingStudy.Create())));
                 Item("Open sample artwork", "", () => Run(() => AddDocument(SampleDocument.Create())));
                 Line();
                 Item("Save editable document", "Ctrl+S", () => _ = SaveAsync());
@@ -71,6 +72,8 @@ public sealed partial class StudioWorkbench
                 Item("Merge down", "Ctrl+E", MergeDown, editable && Session.Document.Layers.IndexOf(active!) > 0);
                 Item("Flatten image…", "", () => _ = FlattenAsync());
                 Line();
+                Item(active?.IsClipped == true ? "Release Clipping Mask" : "Create Clipping Mask", "Ctrl+Alt+G",
+                    () => Run(Session.ToggleClippingMask), active?.IsClipped == true ? Session.CanReleaseClippingMask : Session.CanCreateClippingMask);
                 Item("Add layer mask", "", () => Run(Session.AddMask), editable && active?.Mask is null);
                 Item(active?.MaskEnabled == false ? "Enable mask" : "Disable mask", "",
                     () => Run(() => Session.SetMaskEnabled(active?.MaskEnabled == false)), editable && active?.Mask is not null);
@@ -151,6 +154,7 @@ public sealed partial class StudioWorkbench
                 Item("ImageSpace user guide", "F1", () => _ = HelpAsync());
                 Item("Features and compatibility", "", () => _ = CapabilitiesAsync());
                 Item("Applying masks and rendering", "", () => _ = ShowTextAsync("Applying masks and rendering", MaskApplicationHelp));
+                Item("Clipping masks and compositing", "", () => _ = ShowTextAsync("Clipping masks", ClippingHelp));
                 Item("Filter Gallery and GPU residency", "", () => _ = ShowTextAsync("Filter Gallery", FilterGalleryHelp));
                 Item("Rendering diagnostics", "", () => _ = DiagnosticsAsync());
                 Item("About ImageSpace", "", () => _ = AboutAsync());
@@ -166,20 +170,5 @@ public sealed partial class StudioWorkbench
         Studio.Menu(anchor, kinds.Select(kind => (kind.ToString(), "", (Action)(() => AddAdjustment(kind)), true)));
     }
 
-    private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.Execute("New " + kind + " adjustment", document =>
-    {
-        var layer = new Layer
-        {
-            Name = kind.ToString(),
-            Kind = LayerKind.Adjustment,
-            Adjustment = kind,
-            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0,
-            Width = document.Width,
-            Height = document.Height
-        };
-        var index = document.ActiveLayer is { } active ? document.Layers.IndexOf(active) + 1 : document.Layers.Count;
-        document.Layers.Insert(index, layer);
-        document.ActiveLayerId = layer.Id;
-        document.EditMask = false;
-    }));
+    private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.AddAdjustment(kind));
 }

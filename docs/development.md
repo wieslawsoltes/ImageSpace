@@ -21,6 +21,7 @@ dotnet run --project tests/ImageSpace.MaskTests -c Release
 dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
 dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
 dotnet run --project tests/ImageSpace.LayerTests -c Release
+dotnet run --project tests/ImageSpace.ClippingTests -c Release
 dotnet run --project tests/ImageSpace.FilterStackTests -c Release
 dotnet run --project tests/ImageSpace.Benchmarks -c Release
 
@@ -64,7 +65,7 @@ Build the standalone browser package with:
 
 ```sh
 npm run pack:webgpu
-npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.4.0-alpha.1.tgz
+npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.5.0-alpha.1.tgz
 ```
 
 NuGet.org publication uses [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): the tag-only `nuget` job in `release.yml` exchanges a GitHub OIDC token for a short-lived key in the protected `nuget` environment, so no NuGet API key is stored. npm publication of the WebGPU tarball still requires an `NPM_TOKEN` secret and runs only for tags. Signing/notarization is separate and must be configured for production native distribution.

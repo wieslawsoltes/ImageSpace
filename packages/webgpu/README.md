@@ -64,3 +64,9 @@ npx playwright test --config playwright.gpu.config.mjs
 Run from the repository root. Tests require Python 3, the pinned .NET SDK, Node and installed Playwright Chromium. Registry publication is separate from producing the tarball. HTTPS or localhost is required for browser WebGPU.
 
 For Uno integration, transactional editing and the gallery workflow, see `docs/filter-gallery.md` in the repository.
+
+## Quantization-preserving color fusion
+
+Adjacent enabled color operations now share one WGSL dispatch. Each operation still packs to RGBA8 and decodes before the next; fusion does not silently change the filter chain to a higher-precision algorithm. Blur, convolution and pixelation terminate a color run. The `createSession` option `{ fuseColorOperations: false }` selects the unfused reference path. `logicalOperations`, `fusedPasses`, `dispatches` and `parameterBytesUploaded` distinguish work without pretending to measure physical GPU time. The session reuses its host parameter arena; initial/final image copies and readbacks remain.
+
+The differential suite covers every ordered pair of color kernels, a sixteen-stage chain and mixed spatial chains, including hidden RGB and low-alpha inputs. The eight-stage benchmark compares two warmed resident sessions on the same adapter, retaining all timing samples and resource counters.

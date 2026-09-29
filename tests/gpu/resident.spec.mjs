@@ -106,7 +106,7 @@ test('record resident transfer counters and explicitly scoped end-to-end timings
     }finally{session.dispose();}
   });
   expect(report.final.bufferAllocations).toBe(report.warm.bufferAllocations);
-  expect(report.final.sourceUploads).toBe(1);expect(report.final.readbacks).toBe(6);expect(report.final.dispatches).toBe(24);
+  expect(report.final.sourceUploads).toBe(1);expect(report.final.readbacks).toBe(6);expect(report.final.dispatches).toBe(6);expect(report.final.logicalOperations).toBe(24);expect(report.final.fusedPasses).toBe(6);
   await mkdir('artifacts',{recursive:true});await writeFile('artifacts/resident-gpu-performance.json',JSON.stringify(report,null,2));
   console.log('RESIDENT_GPU_REPORT '+JSON.stringify(report));
 });

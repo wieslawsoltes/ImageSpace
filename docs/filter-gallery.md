@@ -46,7 +46,7 @@ await editorSession.ApplyFilterStackAsync(
 
 ## Resident WebGPU execution
 
-The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. The JavaScript module compiles four pipelines: combined color/convolution, Gaussian horizontal, Gaussian vertical and block-reduced Pixelate.
+The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. The JavaScript module compiles five pipelines: combined color/convolution, fused color stacks, Gaussian horizontal, Gaussian vertical and block-reduced Pixelate.
 
 A session uploads its source once and retains two RGBA ping-pong buffers, readback storage and an aligned uniform arena. Blur's premultiplied float scratch is created only when first needed. Bind groups are cached by input/output pairing. Ordered operations dispatch against these buffers, never reading intermediate stage pixels back to C# or JavaScript. Reading the final output uses a separate copy/readback submission. Repeated preview evaluations reuse the same buffers and original source.
 
@@ -72,4 +72,4 @@ Reports are `filter-stack-tests.json`, `filter-stack-fixtures.json`, `resident-g
 
 ## Remaining boundaries
 
-This increment does not add layer groups, clipping chains, smart objects, high-bit/CMYK/ICC editing, advanced type/paths/styles/warps/healing, PSB, Photoshop plug-ins/timeline/actions or lossless Photoshop metadata roundtrips. The gallery uses original Uno controls and public workspace conventions, not Adobe artwork or private APIs. Full Photoshop feature/UI parity is not claimed.
+This increment does not add layer folder groups, non-default clipping-group options, smart objects, high-bit/CMYK/ICC editing, advanced type/paths/styles/warps/healing, PSB, Photoshop plug-ins/timeline/actions or lossless Photoshop metadata roundtrips. The gallery uses original Uno controls and public workspace conventions, not Adobe artwork or private APIs. Full Photoshop feature/UI parity is not claimed.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0-alpha.1 — 2026-09-29
+
+- Added editable contiguous clipping-mask chains, base-alpha-preserving Skia/SkSL compositing for all sixteen supported blend modes, clipped adjustment scopes and one-time base opacity/blending.
+- Added create/release/shortcut/boundary actions, retained layer indicators, chain-safe reorder/duplicate/delete behavior, clipping-aware geometric hit testing, and an original editable clipping study.
+- Added native manifest v5 with strict legacy-version rejection, standard RGB/8 PSD clipping flags and explicit warnings for unsupported non-default grouped blending.
+- Fused adjacent WebGPU color stages while retaining stage-by-stage RGBA8 quantization, reused the host parameter arena, and separated logical filter counters from physical dispatches. Retained an unfused reference mode.
+- Added clipping model/renderer/format tests, real Uno browser interactions and fusion differential/work-counter benchmarks. Reports describe their actual backend and measurement scope.
+- Folder groups, non-default advanced clipping interactions, smart objects, high-bit/ICC workflows and other documented Photoshop gaps remain separate work; no full UI/feature parity or hardware performance certification is asserted.
+
 ## 0.4.0-alpha.1 — 2026-09-29
 
 - Added a real Uno Filter Gallery with ordered enable/reorder/remove controls, parameter editing, original/result comparison, sampled/coalesced previews, Apply/Cancel and Repeat filter stack.

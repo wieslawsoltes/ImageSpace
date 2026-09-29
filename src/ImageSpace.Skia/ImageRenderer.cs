@@ -10,20 +10,44 @@ public sealed partial class ImageRenderer : IDisposable
     private readonly Dictionary<object, CachedTile> _tiles = new(ReferenceEqualityComparer.Instance);
     private readonly AdjustmentFilterCache _adjustments = new();
     private readonly MaskFilterCache _masks = new();
+    private readonly ClippingBlenderCache _clipping = new();
+    public long ClippingGroupDraws
+    {
+        get; private set;
+    }
+    public long ClippingBlenderBuilds => _clipping.Builds;
     private SKTypeface? _typeface;
-    public long TypefaceRevision { get; private set; }
+    public long TypefaceRevision
+    {
+        get; private set;
+    }
     /// <summary>Copy a font into a separate cache-owning renderer on its owning thread.</summary>
     public void CopyTypefaceFrom(ImageRenderer source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (source._typeface is null) { _typeface?.Dispose(); _typeface = null; TypefaceRevision++; return; }
+        if (source._typeface is null)
+        {
+            _typeface?.Dispose();
+            _typeface = null;
+            TypefaceRevision++;
+            return;
+        }
         using var stream = source._typeface.OpenStream();
         SetTypeface(SKTypeface.FromStream(stream)
             ?? throw new InvalidOperationException("Unable to copy the preview typeface."));
     }
-    public double LastRenderMilliseconds { get; private set; }
-    public long TileUploads { get; private set; }
-    public long DocumentDraws { get; private set; }
+    public double LastRenderMilliseconds
+    {
+        get; private set;
+    }
+    public long TileUploads
+    {
+        get; private set;
+    }
+    public long DocumentDraws
+    {
+        get; private set;
+    }
     public long ToneFilterBuilds => _adjustments.ToneFilterBuilds;
     public long MaskFilterBuilds => _masks.Builds;
     public long MaskSourceBuilds => _masks.SourceBuilds;
@@ -35,8 +59,14 @@ public sealed partial class ImageRenderer : IDisposable
     /// Document isolation is retained regardless of this setting.
     /// </summary>
     public bool EnableDirectLayerDrawing { get; set; } = true;
-    public long DirectLayerDraws { get; private set; }
-    public long IsolatedLayerDraws { get; private set; }
+    public long DirectLayerDraws
+    {
+        get; private set;
+    }
+    public long IsolatedLayerDraws
+    {
+        get; private set;
+    }
 
     public void SetTypeface(SKTypeface typeface)
     {
@@ -70,7 +100,8 @@ public sealed partial class ImageRenderer : IDisposable
             var adjustment = -1;
             for (var i = last; i >= 0; i--)
             {
-                if (document.Layers[i].Visible && document.Layers[i].Kind == LayerKind.Adjustment)
+                var item = document.Layers[i];
+                if (item.Visible && !item.IsClipped && item.Kind == LayerKind.Adjustment)
                 {
                     adjustment = i;
                     break;
@@ -78,8 +109,7 @@ public sealed partial class ImageRenderer : IDisposable
             }
             if (adjustment < 0)
             {
-                for (var i = 0; i <= last; i++)
-                    DrawLayer(canvas, document.Layers[i]);
+                DrawContentRange(canvas, document, 0, last);
                 return;
             }
             var layer = document.Layers[adjustment];
@@ -87,15 +117,22 @@ public sealed partial class ImageRenderer : IDisposable
             var mask = layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0
                 ? _masks.Get(layer, bounds, true, DrawTiles) : null;
             using var paint = _adjustments.CreatePaint(layer, mask, bounds);
-            canvas.SaveLayer(bounds, paint);
-            DrawRange(adjustment - 1);
-            canvas.Restore();
-            for (var i = adjustment + 1; i <= last; i++)
-                DrawLayer(canvas, document.Layers[i]);
+            var saved = canvas.SaveLayer(bounds, paint);
+            try
+            {
+                DrawRange(adjustment - 1);
+            }
+            finally { canvas.RestoreToCount(saved); }
+            DrawContentRange(canvas, document, adjustment + 1, last);
         }
     }
 
+    /// <summary>Draw standalone authored content, independent of its document clipping relationships.</summary>
     public void DrawLayer(SKCanvas canvas, Layer layer, bool ignoreVisibility = false, bool ignoreOpacity = false, bool ignoreTransform = false)
+        => DrawLayerCore(canvas, layer, ignoreVisibility, ignoreOpacity, ignoreTransform, null);
+
+    private void DrawLayerCore(SKCanvas canvas, Layer layer, bool ignoreVisibility, bool ignoreOpacity,
+        bool ignoreTransform, SKBlender? clippedBlender)
     {
         if ((!ignoreVisibility && !layer.Visible) || layer.Kind == LayerKind.Adjustment)
             return;
@@ -113,9 +150,10 @@ public sealed partial class ImageRenderer : IDisposable
                 TransY = transform.M32,
                 Persp2 = 1
             };
-            if (!ignoreTransform) canvas.Concat(in matrix);
+            if (!ignoreTransform)
+                canvas.Concat(in matrix);
             var masked = layer.MaskEnabled && layer.Mask is not null && layer.MaskDensity > 0;
-            var direct = EnableDirectLayerDrawing && !masked &&
+            var direct = clippedBlender is null && EnableDirectLayerDrawing && !masked &&
                 (ignoreOpacity || (layer.Opacity == 1 && layer.Blend == LayerBlend.Normal));
             if (direct)
             {
@@ -132,6 +170,8 @@ public sealed partial class ImageRenderer : IDisposable
                 Color = SKColors.White.WithAlpha(ignoreOpacity ? (byte)255 : Rgba32.Byte(layer.Opacity * 255)),
                 BlendMode = ignoreOpacity ? SKBlendMode.SrcOver : Blend(layer.Blend)
             };
+            if (clippedBlender is not null)
+                composite.Blender = clippedBlender;
             canvas.SaveLayer(composite);
             DrawContent(canvas, layer);
             if (masked)
@@ -338,6 +378,7 @@ public sealed partial class ImageRenderer : IDisposable
         foreach (var tile in _tiles.Values)
             tile.Image.Dispose();
         _tiles.Clear();
+        _clipping.Dispose();
         _adjustments.Dispose();
         _masks.Dispose();
         _typeface?.Dispose();

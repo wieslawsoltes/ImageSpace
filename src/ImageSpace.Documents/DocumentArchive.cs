@@ -72,6 +72,8 @@ public static class DocumentArchive
 
     private static int RequiredVersion(ImageDocument document)
     {
+        if (document.Layers.Any(layer => layer.IsClipped))
+            return 5;
         if (document.Layers.Any(layer => !layer.MaskLinked || layer.MaskPlacement != AffinePlacement.Identity))
             return 4;
         // Existing version-1/2 readers ignore new metadata. Refuse that silent visual loss
@@ -193,7 +195,7 @@ public static class DocumentArchive
         }
         var manifest = JsonSerializer.Deserialize<Manifest>(Read("manifest.json", 4 * 1024 * 1024), Json)
             ?? throw new InvalidDataException("Missing document manifest.");
-        if (manifest.Version is not (1 or 2 or 3 or 4))
+        if (manifest.Version is not (1 or 2 or 3 or 4 or 5))
         {
             throw new InvalidDataException($"Unsupported document version {manifest.Version}.");
         }
@@ -201,6 +203,8 @@ public static class DocumentArchive
         {
             throw new InvalidDataException("Invalid layer metadata or layer count.");
         }
+        if (manifest.Version < 5 && manifest.Layers.Any(record => record.Metadata.IsClipped))
+            throw new InvalidDataException("Clipping metadata requires native manifest version 5.");
         var document = new ImageDocument(manifest.Width, manifest.Height, manifest.Name)
         {
             Id = manifest.Id,

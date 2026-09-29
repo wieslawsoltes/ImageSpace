@@ -64,6 +64,14 @@ public sealed partial class StudioWorkbench
             json.WriteNumber("activeOpacity", layer?.Opacity ?? 1);
             json.WriteBoolean("activeVisible", layer?.Visible ?? false);
             json.WriteBoolean("activeLocked", layer?.Locked ?? false);
+            json.WriteBoolean("activeClipped", layer?.IsClipped ?? false);
+            json.WriteBoolean("canCreateClippingMask", Session.CanCreateClippingMask);
+            json.WriteBoolean("canReleaseClippingMask", Session.CanReleaseClippingMask);
+            var activeIndex = layer is null ? -1 : document.Layers.IndexOf(layer);
+            var clippingBase = activeIndex < 0 ? -1 : LayerClipping.FindBaseIndex(document.Layers, activeIndex);
+            json.WriteString("clippingBase", clippingBase < 0 ? null : document.Layers[clippingBase].Name);
+            json.WriteNumber("clippingGroupDraws", Surface.Renderer.ClippingGroupDraws);
+            json.WriteNumber("clippingBlenderBuilds", Surface.Renderer.ClippingBlenderBuilds);
             json.WriteBoolean("mask", layer?.Mask is not null);
             json.WriteBoolean("editMask", document.EditMask);
             json.WriteNumber("maskDensity", layer?.MaskDensity ?? 1);

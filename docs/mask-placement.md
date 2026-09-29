@@ -25,7 +25,7 @@ To unlink, store the current mask-to-document matrix. To relink, store `maskToDo
 
 Non-default placement or unlink metadata requires native archive version **4**. Version 1–3 files remain readable and default to linked identity placement. A file that declares an older version while carrying independent placement is rejected. The writer retains minimal versions for older feature sets and preserves RGBA mask bytes exactly.
 
-PSD remains raster interchange: the placed mask is baked into exported raster-layer pixels. Photoshop link metadata, editable affine masks, groups, clipping groups, vectors and smart objects are **not** losslessly roundtripped. Preserve `.imagespace` for editable placement and keep original PSDs.
+PSD remains raster interchange: the placed mask is baked into exported raster-layer pixels. Photoshop link metadata, editable affine masks, folder groups, non-default clipping-group options, vectors and smart objects are **not** losslessly roundtripped. Preserve `.imagespace` for editable placement and keep original PSDs.
 
 ## Performance changes
 
