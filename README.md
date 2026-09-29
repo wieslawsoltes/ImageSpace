@@ -21,11 +21,19 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.3.2-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.4.0-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
-## New in 0.3.2
+## New in 0.4
+
+**An ordered Filter Gallery backed by resident GPU sessions.** Preview, reorder, bypass and combine up to sixteen filters, compare with the original, then apply the complete recipe as one undoable edit. Cancel changes nothing; Repeat filter stack reuses the accepted settings. Preview images are sampled and coalesced without rebuilding the main retained selection UI.
+
+**Thirteen browser GPU kernels.** Premultiplied Gaussian blur, sharpen, emboss, edges and block-reduced pixelation join the eight color kernels. Interactive sessions upload their source once and reuse ping-pong buffers, bind groups and pipelines. Intermediate stages stay on the GPU; only requested final outputs are read back. Seeded Noise and unavailable adapters retain CPU fallback. Desktop gallery filtering currently uses CPU kernels while document rendering remains Skia-based.
+
+[Filter Gallery: workflow, reusable APIs, limits and validation](docs/filter-gallery.md).
+
+## Retained selection UI
 
 **Selection updates values, not the entire workspace.** Inspector schemas, layer rows, toolbars, tabs and visible history controls are retained. Button templates are parsed once per UI thread. Optional histograms are deferred and sampled through independent caches; selecting a layer does not compress a recovery archive. Cursor/handle/selection overlays have a separate retained drawing from image compositing. Real-pointer browser tests assert stable control counts, correct undo rebinding and image-cache reuse.
 
@@ -54,7 +62,7 @@ Link/unlink masks without a jump, manipulate their affine frame with on-canvas h
 | Layers | Sparse pixels, editable multiline type, rectangle/ellipse shapes, masks and raster-mask application, sixteen blends, opacity, visibility, locks, duplicate/reorder and rasterization |
 | Geometry | Eight-handle scaling, rotation, constrained motion, numeric properties, non-destructive crop and canvas/image sizing |
 | Tone | **Curves and Levels**, composite RGB and separate color channels, draggable graphs, numeric/keyboard editing, presets and live undoable previews |
-| Effects | Fourteen CPU filters, eight optional WebGPU color kernels and eight live Skia adjustment types |
+| Effects | Fourteen CPU filters, thirteen optional WebGPU color/spatial kernels, an ordered Filter Gallery and eight live Skia adjustment types |
 | Files | Editable native archives, bounded RGB/8 PSD, raster import, PNG/JPEG/WebP export, multiple document tabs |
 | Recovery | Local IndexedDB or atomic desktop recovery file; visible error reporting |
 
@@ -70,7 +78,7 @@ Curves uses independently implemented shape-preserving cubic interpolation with 
 
 The shared compositor draws revision-cached tiles, text, shapes, blends, masks and live adjustments into Uno's `SKCanvasElement`. The host selects its available Skia graphics backend; software rendering remains possible. Curves/Levels use shared Skia lookup filters, rather than a WebGPU roundtrip for every pointer movement.
 
-An independently reusable browser WebGPU module accelerates invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold and posterize. Output returns to the authoritative tile model for undo and native saving. Unsupported kernels/adapters use the CPU path. This is **not a GPU-only engine**, and software-adapter CI does not establish physical-GPU performance.
+An independently reusable browser WebGPU module accelerates thirteen color/spatial filters, including Gaussian blur, convolution and block-reduced pixelation. Its resident-session API reuses immutable source and intermediate buffers across ordered previews. Output returns to the authoritative tile model for undo and native saving. Unsupported kernels/adapters use the CPU path. This is **not a GPU-only engine**, and software-adapter CI does not establish physical-GPU performance.
 
 The compatible baseline is pinned to **.NET SDK 10.0.401**, **Uno SDK 6.7.30** and **SkiaSharp 3.119.4**. Managed/native Skia ABI compatibility is intentional; independently changing only one side is not a supported upgrade.
 
@@ -554,6 +562,7 @@ dotnet run --project tests/ImageSpace.MaskTests -c Release
 dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
 dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
 dotnet run --project tests/ImageSpace.LayerTests -c Release
+dotnet run --project tests/ImageSpace.FilterStackTests -c Release
 dotnet run --project tests/ImageSpace.Benchmarks -c Release
 npm ci
 npx playwright install chromium

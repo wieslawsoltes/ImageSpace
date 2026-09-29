@@ -17,13 +17,16 @@ internal sealed class BrowserFilterSession : IFilterSession
     private BrowserFilterSession(PixelSurface source, string handle)
     {
         _fallback = new CpuFilterSession(source);
-        _width = source.Width; _height = source.Height; _handle = handle;
+        _width = source.Width;
+        _height = source.Height;
+        _handle = handle;
     }
     public static async Task<IFilterSession?> CreateAsync(PixelSurface source, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var handle = await BrowserFiles.CreateFilterSession(Convert.ToBase64String(source.ToRgba()), source.Width, source.Height);
-        if (string.IsNullOrEmpty(handle)) return null;
+        if (string.IsNullOrEmpty(handle))
+            return null;
         if (cancellationToken.IsCancellationRequested)
         {
             BrowserFiles.ReleaseFilterSession(handle);
@@ -43,7 +46,10 @@ internal sealed class BrowserFilterSession : IFilterSession
             {
                 var json = JsonSerializer.Serialize(captured.Select(op => new
                 {
-                    kind = op.Kind.ToString(), amount = op.Amount, secondary = op.Secondary, enabled = op.Enabled
+                    kind = op.Kind.ToString(),
+                    amount = op.Amount,
+                    secondary = op.Secondary,
+                    enabled = op.Enabled
                 }).ToArray());
                 var result = await BrowserFiles.EvaluateFilterSession(handle, json);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -56,7 +62,8 @@ internal sealed class BrowserFilterSession : IFilterSession
             catch (Exception error)
             {
                 Console.WriteLine("Resident GPU fallback: " + error.Message);
-                BrowserFiles.ReleaseFilterSession(handle); _handle = null;
+                BrowserFiles.ReleaseFilterSession(handle);
+                _handle = null;
             }
         }
         Backend = "CPU fallback (seeded Noise or unavailable GPU)";
@@ -64,9 +71,14 @@ internal sealed class BrowserFilterSession : IFilterSession
     }
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
+        if (_disposed)
+            return;
         _disposed = true;
-        if (_handle is not null) { BrowserFiles.ReleaseFilterSession(_handle); _handle = null; }
+        if (_handle is not null)
+        {
+            BrowserFiles.ReleaseFilterSession(_handle);
+            _handle = null;
+        }
         await _fallback.DisposeAsync();
     }
 }

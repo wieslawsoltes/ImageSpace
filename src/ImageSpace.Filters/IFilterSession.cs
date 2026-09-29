@@ -8,7 +8,10 @@ namespace ImageSpace.Filters;
 /// </summary>
 public interface IFilterSession : IAsyncDisposable
 {
-    string Backend { get; }
+    string Backend
+    {
+        get;
+    }
     Task<PixelSurface> ApplyAsync(IReadOnlyList<FilterOperation> operations, CancellationToken cancellationToken = default);
 }
 
@@ -38,7 +41,8 @@ public sealed class CpuFilterSession : IFilterSession
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (!operation.Enabled) continue;
+                if (!operation.Enabled)
+                    continue;
                 // Browser CPU fallback yields between stages. It does not pretend to
                 // preempt an already-running scalar kernel on the single UI thread.
                 await Task.Yield();

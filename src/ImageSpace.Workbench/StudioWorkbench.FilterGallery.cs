@@ -4,7 +4,10 @@ namespace ImageSpace.Workbench;
 
 public sealed partial class StudioWorkbench
 {
-    public Func<PixelSurface, CancellationToken, Task<IFilterSession?>>? FilterSessionFactory { get; set; }
+    public Func<PixelSurface, CancellationToken, Task<IFilterSession?>>? FilterSessionFactory
+    {
+        get; set;
+    }
     private FilterOperation[] _lastFilterRecipe = [];
 
     private async Task<IFilterSession> CreateFilterSessionAsync(PixelSurface source, CancellationToken cancellationToken)
@@ -14,7 +17,8 @@ public sealed partial class StudioWorkbench
             try
             {
                 var accelerated = await FilterSessionFactory(source, cancellationToken);
-                if (accelerated is not null) return accelerated;
+                if (accelerated is not null)
+                    return accelerated;
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception error) { ShowStatus("GPU session unavailable; using CPU kernels. " + error.Message); }
@@ -24,7 +28,8 @@ public sealed partial class StudioWorkbench
 
     private async Task FilterGalleryAsync()
     {
-        if (_busy || _dialogOpen || !Session.CanApplyFilterStack) return;
+        if (_busy || _dialogOpen || !Session.CanApplyFilterStack)
+            return;
         var session = Session;
         var layer = session.Document.ActiveLayer!;
         var revision = session.Revision;
@@ -41,27 +46,44 @@ public sealed partial class StudioWorkbench
             };
             var dialog = new ContentDialog
             {
-                Title = "Filter Gallery", Content = editor, PrimaryButtonText = "Apply filters", CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Primary, XamlRoot = XamlRoot, RequestedTheme = ElementTheme.Dark,
-                Background = Studio.Brush("#323232"), Foreground = Studio.Brush("#dddddd"), FontFamily = Studio.Font
+                Title = "Filter Gallery",
+                Content = editor,
+                PrimaryButtonText = "Apply filters",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = XamlRoot,
+                RequestedTheme = ElementTheme.Dark,
+                Background = Studio.Brush("#323232"),
+                Foreground = Studio.Brush("#dddddd"),
+                FontFamily = Studio.Font
             };
             dialog.Resources["ContentDialogMaxWidth"] = Math.Clamp(ActualWidth - 50, 600, 1100);
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return;
             operations = editor.Operations;
         }
         catch (Exception error) { ShowStatus("Filter Gallery: " + error.Message); return; }
         finally { _dialogOpen = false; }
         if (!ReferenceEquals(Session, session) || session.Revision != revision || !ReferenceEquals(session.Document.ActiveLayer, layer))
-        { ShowStatus("The document changed while the gallery was open; no filters were applied."); return; }
+        {
+            ShowStatus("The document changed while the gallery was open; no filters were applied.");
+            return;
+        }
         await ApplyRecipeAsync(operations);
     }
 
     private async Task ApplyRecipeAsync(IReadOnlyList<FilterOperation> operations)
     {
-        if (_busy || _dialogOpen || !Session.CanApplyFilterStack) return;
+        if (_busy || _dialogOpen || !Session.CanApplyFilterStack)
+            return;
         var captured = FilterRecipe.Capture(operations);
-        if (!captured.Any(op => op.Enabled)) { ShowStatus("No enabled filters; the document was not changed."); return; }
-        _busy = true; _workspace.IsHitTestVisible = false;
+        if (!captured.Any(op => op.Enabled))
+        {
+            ShowStatus("No enabled filters; the document was not changed.");
+            return;
+        }
+        _busy = true;
+        _workspace.IsHitTestVisible = false;
         ShowStatus("Applying filter stack…");
         try
         {

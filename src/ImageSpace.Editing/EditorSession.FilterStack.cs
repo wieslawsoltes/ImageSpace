@@ -16,8 +16,10 @@ public sealed partial class EditorSession
     {
         ArgumentNullException.ThrowIfNull(createSession);
         var captured = FilterRecipe.Capture(operations);
-        if (!CanApplyFilterStack) throw new InvalidOperationException("Select unlocked raster content and finish the current gesture first.");
-        if (!captured.Any(operation => operation.Enabled)) return;
+        if (!CanApplyFilterStack)
+            throw new InvalidOperationException("Select unlocked raster content and finish the current gesture first.");
+        if (!captured.Any(operation => operation.Enabled))
+            return;
         var document = Document;
         var layer = document.ActiveLayer!;
         var target = layer.Pixels!;

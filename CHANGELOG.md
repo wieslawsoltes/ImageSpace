@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0-alpha.1 — 2026-09-29
+
+- Added a real Uno Filter Gallery with ordered enable/reorder/remove controls, parameter editing, original/result comparison, sampled/coalesced previews, Apply/Cancel and Repeat filter stack.
+- Added immutable filter recipes and reusable CPU/resident session contracts with atomic selection-restricted commits, stale-result rejection, cancellation and independent copy-on-write ownership.
+- Expanded WebGPU support from eight to thirteen kernels with premultiplied separable blur, sharpen, emboss, edges and block-reduced Pixelate. Seeded Noise remains on CPU.
+- Resident sessions upload source once, cache buffers/bind groups, keep intermediate stages on GPU and expose explicit execution/readback/disposal and memory-budget diagnostics.
+- Fixed spatial-filter hidden RGB output so it no longer depends on sparse-tile allocation order. Exact bridge decoding retains these intermediates; transparent multi-stage CPU/GPU regressions cover the behavior.
+- Added C# transaction/ownership fixtures, independent WGSL and actual-C# parity checks, concurrent-session/device-loss tests, and real Uno gallery/pixel/undo/file/fallback acceptance.
+- Preserved existing retained UI optimizations and NuGet Trusted Publishing/release configuration. This is not full Photoshop parity, persisted Smart Filters, a GPU-only engine, or physical-GPU certification.
+
 ## 0.3.2-alpha.1 — 2026-09-28
 
 - Retained schema-specific inspectors, identity-keyed layer rows, tool options and document tabs instead of rebuilding the workbench on selection.

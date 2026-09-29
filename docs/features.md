@@ -60,3 +60,7 @@ Engine and regression suites exercise model, parser and actual Skia pixel output
 Tile-native fills/imports, contiguous RGBA rows, sparse histogram scans, pooled row-based bilinear resizing, crop and flip, direct native Skia pixel spans, and streaming archive pixel entries. Correctness is checked against scalar implementations, independent PSD fixtures, archive/mask regressions and actual browser interactions. Timing results are CPU-only, workload-specific and retained by CI; no claim of physical GPU speed follows from them.
 
 Linked/unlinked mask placement and exact streaming selection outlines are described in [mask-placement.md](mask-placement.md).
+
+## Filter Gallery and resident compute
+
+Filter Gallery supports ordered raster effects, bypass/reorder/remove, numeric parameters, sampled original/result comparison and one-transaction Apply/Cancel/Repeat. Browser sessions retain source and intermediate buffers and support thirteen GPU kernels, including blur/convolution/pixelation. Seeded Noise and unavailable adapters use CPU fallback; desktop gallery filtering is currently CPU-based. The recipe is not a persisted Smart Filter and does not preserve Photoshop filter metadata. See [the exact workflow and limits](filter-gallery.md).

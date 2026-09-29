@@ -14,7 +14,8 @@ internal sealed class BrowserEditorStorage : IEditorStorage
     {
         cancellationToken.ThrowIfCancellationRequested();
         var value = await BrowserFiles.Open();
-        if (string.IsNullOrEmpty(value)) return null;
+        if (string.IsNullOrEmpty(value))
+            return null;
         using var json = JsonDocument.Parse(value);
         return new(json.RootElement.GetProperty("name").GetString()!, Convert.FromBase64String(json.RootElement.GetProperty("data").GetString()!));
     }
@@ -44,7 +45,8 @@ internal sealed class BrowserGpuBackend
 {
     public async Task<PixelSurface?> ApplyAsync(PixelSurface source, FilterKind kind, float amount, float secondary)
     {
-        if (!GpuKernels.Supports(kind)) return null;
+        if (!GpuKernels.Supports(kind))
+            return null;
         var result = await BrowserFiles.Filter(Convert.ToBase64String(source.ToRgba()), source.Width, source.Height, kind.ToString(), amount, secondary);
         return string.IsNullOrEmpty(result) ? null : FilterPixels.FromRgba(source.Width, source.Height, Convert.FromBase64String(result));
     }
@@ -68,7 +70,8 @@ internal static class BrowserDiagnostics
     {
         workbench.FilterSessionFactory = BrowserFilterSession.CreateAsync;
         workbench.StateChanged += () => BrowserFiles.SetDirty(workbench.Documents.Any(s => s.IsDirty));
-        if (!BrowserFiles.IsTestMode()) return;
+        if (!BrowserFiles.IsTestMode())
+            return;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         timer.Tick += (_, _) => { try { BrowserFiles.PublishState(workbench.CaptureDiagnostics(), workbench.CaptureControls()); } catch (Exception ex) { Console.WriteLine("Diagnostics: " + ex.Message); } };
         workbench.Unloaded += (_, _) => timer.Stop();

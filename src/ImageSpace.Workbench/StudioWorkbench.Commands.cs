@@ -84,7 +84,8 @@ public sealed partial class StudioWorkbench
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
                 {
-                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
+                    if (document.ActiveLayer is { } layer)
+                        layer.Locked = !layer.Locked;
                 })), has);
                 break;
             case "Type":
@@ -167,8 +168,15 @@ public sealed partial class StudioWorkbench
 
     private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.Execute("New " + kind + " adjustment", document =>
     {
-        var layer = new Layer { Name = kind.ToString(), Kind = LayerKind.Adjustment, Adjustment = kind,
-            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0, Width = document.Width, Height = document.Height };
+        var layer = new Layer
+        {
+            Name = kind.ToString(),
+            Kind = LayerKind.Adjustment,
+            Adjustment = kind,
+            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0,
+            Width = document.Width,
+            Height = document.Height
+        };
         var index = document.ActiveLayer is { } active ? document.Layers.IndexOf(active) + 1 : document.Layers.Count;
         document.Layers.Insert(index, layer);
         document.ActiveLayerId = layer.Id;

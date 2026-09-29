@@ -62,11 +62,13 @@ Export uses a separate Skia raster surface. It cannot directly reuse an arbitrar
 
 ## WebGPU compute
 
-The standalone JavaScript module requests a compatible adapter and creates one reusable compute pipeline. RGBA pixels are packed as little-endian `u32` values in storage buffers. A 16 × 16 workgroup operates on one pixel per invocation. Dimensions, parameter ranges and storage-buffer limits are checked before allocation.
+The standalone engine compiles four pipelines implementing thirteen RGBA8 filters: color/convolution, Gaussian horizontal, Gaussian vertical and block-reduced Pixelate. Seeded Noise retains the established CPU sequence. See [Filter Gallery](filter-gallery.md) for the complete backend and UI contracts.
 
-Eight color kernels share one shader. Dispatch writes a storage output, copies to a map-readable buffer and reads back into the editable model. GPU buffers are destroyed in a `finally` block, and device loss clears the cached device/pipeline. Unsupported kernels return `null` so the host can use its CPU implementation.
+Resident sessions capture an immutable source, allocate two RGBA ping-pong buffers, an aligned parameter arena and readback storage, and allocate premultiplied float blur scratch only when needed. Bind groups and pipelines are reused. Each evaluation resets to the original source; intermediate filter stages never cross back to CPU. Explicit execute/read/apply methods separate computation from optional output readback. Reading adds a separate copy/map submission.
 
-This tradeoff favors edit-model consistency and reusable public APIs over a misleading GPU-only claim. It incurs upload/readback overhead. A future resident-tile backend can implement `IComputeFilterBackend` without replacing the editor. WebGPU results and CPU kernels can differ by one byte at floating-point rounding boundaries.
+Device error scopes and submissions are serialized across callers. Loss, disposal, validation failures and allocation limits invalidate sessions explicitly. Aggregate requested GPU buffers are capped at 256 MiB; per-buffer adapter limits can be stricter. This is not a process-wide memory bound and does not include JavaScript/managed image copies or native driver allocations. Spatial stages retain their computed hidden RGB deterministically for subsequent filters; color-only stages keep their established transparent-pixel normalization.
+
+The browser host uses these sessions for gallery previews and commits, retaining initial/final .NET-to-JavaScript RGBA transfers. A sampled 256-pixel preview is not a full-resolution proof of final output. CPU fallback is available for unsupported operations, adapters and memory limits; desktop gallery evaluation currently uses CPU kernels while the document compositor remains Skia-based. Device-loss and SwiftShader tests establish correctness, not physical-GPU speed or input-to-photon latency.
 
 ## Dependency policy
 
