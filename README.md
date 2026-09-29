@@ -31,7 +31,7 @@ Eleven reusable .NET libraries separate the document model, copy-on-write tiles,
 
 **Thirteen browser GPU kernels.** Premultiplied Gaussian blur, sharpen, emboss, edges and block-reduced pixelation join the eight color kernels. Interactive sessions upload their source once and reuse ping-pong buffers, bind groups and pipelines. Intermediate stages stay on the GPU; only requested final outputs are read back. Seeded Noise and unavailable adapters retain CPU fallback. Desktop gallery filtering currently uses CPU kernels while document rendering remains Skia-based.
 
-[Filter Gallery: workflow, reusable APIs, limits and validation](docs/filter-gallery.md).
+[Filter Gallery: workflow, reusable APIs, limits and validation](docs/filter-gallery.md) · [Transparent comparisons and acceptance](docs/filter-gallery-validation.md).
 
 ## Retained selection UI
 
@@ -287,7 +287,7 @@ PixelSurface toned = ToneFilterEngine.Apply(source, RgbLookupTables.FromLevels(l
 
 ### ImageSpace.WebGpu
 
-Contracts for optional GPU compute plus the standalone WebGPU JavaScript/WGSL kernels (`WebGpu.js`, shipped as an embedded resource and as `contentFiles/any/any/ImageSpace/WebGpu.js`). Eight color kernels are accelerated (invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold, posterize); everything else, and any unavailable adapter, falls back to the CPU. Depends on Filters; no UI. The host (for example a browser interop layer) implements `IComputeFilterBackend`.
+Contracts for optional GPU compute plus the standalone WebGPU JavaScript/WGSL kernels (`WebGpu.js`, shipped as an embedded resource and as `contentFiles/any/any/ImageSpace/WebGpu.js`). Thirteen color/spatial kernels are accelerated: invert, grayscale, sepia, brightness/contrast, saturation, gamma, threshold, posterize, Gaussian blur, sharpen, emboss, edges and pixelate. Seeded Noise and unavailable or over-budget adapters use CPU fallback. Resident sessions retain the original source and intermediate GPU buffers across previews, with explicit execution, final readback and disposal APIs. Depends on Filters; no UI. The host (for example a browser interop layer) implements `IComputeFilterBackend`.
 
 ```sh
 dotnet add package ImageSpace.WebGpu --prerelease
@@ -563,6 +563,7 @@ dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
 dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
 dotnet run --project tests/ImageSpace.LayerTests -c Release
 dotnet run --project tests/ImageSpace.FilterStackTests -c Release
+dotnet run --project tests/ImageSpace.PreviewTests -c Release
 dotnet run --project tests/ImageSpace.Benchmarks -c Release
 npm ci
 npx playwright install chromium
