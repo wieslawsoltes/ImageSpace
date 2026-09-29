@@ -29,15 +29,15 @@ jobs:
           assert hashlib.sha256(patch).hexdigest()=='c944cb0eb2887452e681dc58604bd9ffbcb540aa306f20108538ce5c006cca8b'
           Path('/tmp/imagespace-clipping.patch').write_bytes(patch)
           PY
-          git apply --3way --check /tmp/imagespace-clipping.patch
-          git apply --3way /tmp/imagespace-clipping.patch
+          git apply --3way --check --exclude='.github/workflows/*' /tmp/imagespace-clipping.patch
+          git apply --3way --exclude='.github/workflows/*' /tmp/imagespace-clipping.patch
           test -z "$(git ls-files -u)"
           grep -q 'tests/ImageSpace.PreviewTests -c Release' README.md
           rm -r .github/clipping
-          rm .github/workflows/import-clipping.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
+          test -z "$(git diff --cached --name-only -- '.github/workflows/*')"
           git commit -m 'Implement grouped clipping masks, PSD/native persistence and quantization-preserving GPU color fusion'
           git push origin HEAD:feat/clipping-color-fusion
