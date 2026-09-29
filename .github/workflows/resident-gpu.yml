@@ -1,7 +1,7 @@
 name: Resident GPU
 on:
   push:
-    branches: [main, feat/resident-filter-gallery]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - name: Verify stack transactions and generate actual C# reference pixels
+      - name: Verify stack transactions and generate actual CSharp reference pixels
         run: dotnet run --project tests/ImageSpace.FilterStackTests -c Release
       - uses: actions/setup-node@v7
         with:
@@ -35,3 +35,4 @@ jobs:
           path: |
             artifacts/resident-gpu*.json
             artifacts/filter-stack*.json
+            artifacts/transparent-filter-fixtures.json
