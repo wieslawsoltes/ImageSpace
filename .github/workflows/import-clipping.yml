@@ -1,0 +1,41 @@
+name: Import validated clipping and color fusion source
+on:
+  push:
+    branches: [feat/clipping-color-fusion]
+    paths: [.github/workflows/import-clipping.yml]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: feat/clipping-color-fusion
+      - name: Verify branch and apply source patch
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 0f1ed99ec08e12c8b7095742838b6bd9d17046b2 HEAD
+          git diff --exit-code 0f1ed99ec08e12c8b7095742838b6bd9d17046b2 -- src tests docs README.md CHANGELOG.md ImageSpace.slnx Directory.Build.props scripts packages .github/workflows/build.yml .github/workflows/release.yml
+          python3 - <<'PY'
+          import base64,hashlib,lzma
+          from pathlib import Path
+          encoded=''.join(Path(f'.github/clipping/{i}.b64').read_text() for i in range(4))
+          assert len(encoded)==51944
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert len(patch)==175229
+          assert hashlib.sha256(patch).hexdigest()=='c944cb0eb2887452e681dc58604bd9ffbcb540aa306f20108538ce5c006cca8b'
+          Path('/tmp/imagespace-clipping.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/imagespace-clipping.patch
+          git apply /tmp/imagespace-clipping.patch
+          rm -r .github/clipping
+          rm .github/workflows/import-clipping.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Implement grouped clipping masks, PSD/native persistence and quantization-preserving GPU color fusion'
+          git push origin HEAD:feat/clipping-color-fusion
