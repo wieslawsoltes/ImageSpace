@@ -7,7 +7,12 @@ var tests = new List<(string Name, Func<Task> Body)>();
 void Test(string name, Func<Task> body) => tests.Add((name, body));
 void Check(bool condition, string message = "Assertion failed") { if (!condition) throw new Exception(message); }
 void Equal(PixelSurface a, PixelSurface b) => Check(a.Width == b.Width && a.Height == b.Height && a.ToRgba().SequenceEqual(b.ToRgba()), "Pixel mismatch");
-async Task Reject(Func<Task> action) { try { await action(); } catch (Exception e) when (e is ArgumentException or InvalidOperationException or OperationCanceledException) { return; } throw new Exception("Expected rejection"); }
+async Task Reject(Func<Task> action)
+{
+    try { await action(); }
+    catch (Exception e) when (e is ArgumentException or InvalidOperationException or OperationCanceledException) { return; }
+    throw new Exception("Expected rejection");
+}
 PixelSurface Source(int width = 11, int height = 9)
 {
     var source = new PixelSurface(width, height);
@@ -43,7 +48,9 @@ Test("stack order, reset-to-source, disabled stages and ownership", async () =>
     Equal(FilterEngine.Apply(FilterEngine.Apply(captured, FilterKind.Sepia), FilterKind.Invert), result);
     var second = await session.ApplyAsync(recipe); Equal(result, second);
     result.Fill(Rgba32.White); Equal(captured, await session.ApplyAsync([]));
-    Check(!second.ToRgba().SequenceEqual((await session.ApplyAsync([new(FilterKind.Invert), new(FilterKind.Sepia)])).ToRgba()));
+    // Await before starting any span-based comparison; spans cannot survive suspension.
+    var reversed = await session.ApplyAsync([new(FilterKind.Invert), new(FilterKind.Sepia)]);
+    Check(!second.ToRgba().SequenceEqual(reversed.ToRgba()));
 });
 Test("validation rejects null operations, invalid enum, huge/nonfinite parameters and excessive stacks", async () =>
 {
@@ -115,7 +122,7 @@ foreach (var kind in new[] { "revision", "pixels", "selection", "transform", "ca
     Test("stale asynchronous result rejected: " + mode, async () =>
     {
         var session = Session(); var layer = session.Document.ActiveLayer!; var source = layer.Pixels!;
-        var token = new CancellationTokenSource();
+        using var token = new CancellationTokenSource();
         var pending = new TaskCompletionSource<PixelSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
         var backend = new FakeSession((_, _) => pending.Task);
         var task = session.ApplyFilterStackAsync([new(FilterKind.Invert)], (_, _) => Task.FromResult<IFilterSession>(backend), token.Token);
@@ -127,7 +134,6 @@ foreach (var kind in new[] { "revision", "pixels", "selection", "transform", "ca
         pending.SetResult(Source());
         await Reject(() => task);
         Check(session.History.Count == 0 && backend.Disposed && !session.IsInTransaction);
-        token.Dispose();
     });
 }
 Test("invalid output dimensions reject before opening a transaction", async () =>
@@ -135,6 +141,20 @@ Test("invalid output dimensions reject before opening a transaction", async () =
     var session = Session(); var backend = new FakeSession((_, _) => Task.FromResult(new PixelSurface(1, 1)));
     await Reject(() => session.ApplyFilterStackAsync([new(FilterKind.Invert)], (_, _) => Task.FromResult<IFilterSession>(backend)));
     Check(session.History.Count == 0 && backend.Disposed);
+});
+Test("renderer output has independent ownership after committing", async () =>
+{
+    var session = Session(); var output = Source(); var expected = output.Snapshot();
+    var backend = new FakeSession((_, _) => Task.FromResult(output));
+    await session.ApplyFilterStackAsync([new(FilterKind.Invert)], (_, _) => Task.FromResult<IFilterSession>(backend));
+    output.Fill(Rgba32.White); Equal(expected, session.Document.ActiveLayer!.Pixels!); Check(backend.Disposed);
+});
+Test("backend failure preserves document and disposes resources", async () =>
+{
+    var session = Session(); var before = session.Document.ActiveLayer!.Pixels!.Snapshot();
+    var backend = new FakeSession((_, _) => throw new InvalidOperationException("Simulated failure"));
+    await Reject(() => session.ApplyFilterStackAsync([new(FilterKind.Invert)], (_, _) => Task.FromResult<IFilterSession>(backend)));
+    Equal(before, session.Document.ActiveLayer!.Pixels!); Check(session.History.Count == 0 && backend.Disposed);
 });
 var failures = 0; var results = new List<object>();
 foreach (var (name, body) in tests)
@@ -144,7 +164,6 @@ foreach (var (name, body) in tests)
 }
 Directory.CreateDirectory("artifacts");
 File.WriteAllText("artifacts/filter-stack-tests.json", JsonSerializer.Serialize(new { total = tests.Count, passed = tests.Count - failures, failed = failures, results }));
-// Actual established C# outputs supplement the independently implemented scalar JS oracle.
 var fixture = Source(19, 17);
 var fixtures = Enum.GetValues<FilterKind>().Where(kind => kind != FilterKind.Noise).Select(kind =>
 {

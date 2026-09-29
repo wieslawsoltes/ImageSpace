@@ -30,6 +30,7 @@ jobs:
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
           dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
           dotnet run --project tests/ImageSpace.LayerTests -c Release
+          dotnet run --project tests/ImageSpace.FilterStackTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
       - uses: actions/upload-artifact@v7
         if: always()
@@ -50,7 +51,9 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Pointer, keyboard, tonal, mask, file and GPU browser acceptance
+      - name: Resident GPU kernels, actual C# parity and resource lifetime
+        run: npx playwright test --config playwright.gpu.config.mjs
+      - name: Pointer, keyboard, gallery, tonal, mask, file and GPU browser acceptance
         run: |
           npm run test:browser
           mkdir -p site/screenshots
@@ -73,6 +76,8 @@ jobs:
           path: |
             artifacts/browser-results.json
             artifacts/webgpu-results.json
+            artifacts/resident-gpu*.json
+            artifacts/filter-stack-fixtures.json
             artifacts/browser-tests
             artifacts/screenshots
           if-no-files-found: warn
