@@ -8,7 +8,7 @@ public static partial class PsdCodec
     private sealed record Channel(short Id, uint Length);
     private sealed record MaskRecord(int X, int Y, int Width, int Height, byte Default, byte Flags, float Density, float Feather);
     private sealed record LayerRecord(int X, int Y, int Width, int Height, string Name, byte Opacity,
-        bool Visible, bool Locked, LayerBlend Blend, List<Channel> Channels, MaskRecord? Mask);
+        bool Visible, bool Locked, bool Clipped, LayerBlend Blend, List<Channel> Channels, MaskRecord? Mask);
 
     public static ImportResult Load(byte[] bytes, string name = "Imported PSD")
     {
@@ -73,6 +73,7 @@ public static partial class PsdCodec
                     layer.Visible = record.Visible;
                     layer.Locked = record.Locked;
                     layer.Blend = record.Blend;
+                    layer.IsClipped = record.Clipped;
                     if (record.Mask is { } mask)
                     {
                         layer.Mask = PlaceMask(record, mask, planes.GetValueOrDefault((short)-2));
@@ -138,8 +139,8 @@ public static partial class PsdCodec
         var clipping = reader.Byte();
         var flags = reader.Byte();
         reader.Byte();
-        if (clipping != 0)
-            warnings.Add("Clipping-chain relationships are not retained; clipped pixel layers may differ from the Photoshop composite.");
+        if (clipping > 1)
+            throw new InvalidDataException("Invalid PSD clipping flag.");
         var extra = reader.Section();
         var mask = ReadMask(extra.Section(), warnings);
         var ranges = extra.Section();
@@ -174,6 +175,8 @@ public static partial class PsdCodec
             }
             else if (key == "lspf")
                 locked = (data.UInt32() & 0x80000000u) != 0;
+            else if (key == "clbl" && data.Byte() == 0)
+                warnings.Add("The non-default Blend Clipped Layers As Group option is not retained; clipping uses grouped base blending.");
             else if (key is "lsct" or "lsdk")
                 warnings.Add("Layer groups are imported as flat raster layers; group blend/isolation semantics are not retained.");
             else if (key is "vmsk" or "vsms" or "SoLd" or "SoLE" or "TySh" or "lrFX" or "lfx2" or "curv" or "levl" or "brit" or "hue2")
@@ -182,7 +185,7 @@ public static partial class PsdCodec
                 extra.Take(1);
         }
         extra.PaddingOnly();
-        return new(left, top, width, height, layerName, opacity, (flags & 2) == 0, locked, blend, channels, mask);
+        return new(left, top, width, height, layerName, opacity, (flags & 2) == 0, locked, clipping == 1, blend, channels, mask);
     }
 
     private static MaskRecord? ReadMask(PsdReader reader, HashSet<string> warnings)

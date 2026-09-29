@@ -17,7 +17,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Fill/gradient | Foreground/background, active pixel layer, linear gradient |
 | Selection | Rectangle, ellipse, lasso, contiguous color; add/subtract/intersect, invert, feather, alpha selection, expand/contract/border/smooth (square neighborhoods; preserves soft coverage) |
 | Masks | Pixel/text/shape/adjustment coverage masks, density, feather, selection-aware pixel tools and view-only grayscale/overlay inspection; linked/unlinked affine mask placement, relink-without-jump, independent pointer/numeric transforms; group masks remain unsupported |
-| Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; no groups or clipping chains |
+| Layers | Visibility, locks, opacity, duplicate/reorder, rasterize, normal-mode merge and sixteen blend modes; grouped clipping chains; no folder groups |
 | Type | Editable multiline Inter text, size, weight and color; no complete typography/font-discovery UI |
 | Shapes | Rectangle, rounded rectangle and ellipse, fill and stroke; no pen/path editor |
 | Transforms | Move, eight resize handles, rotation handle, numeric inputs and constrained gestures |
@@ -27,7 +27,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 | Live adjustments | Brightness/contrast, saturation, invert, grayscale, sepia, blur, **Curves and Levels** |
 | Curves | Four channels, up to sixteen points per channel, shape-preserving cubic interpolation, numeric/keyboard edits, presets and live transactional dragging |
 | Levels | Four channels, input/output endpoints, gamma, draggable histogram handles, numeric edits and presets |
-| Native archive | Version 1–4 reader; version 4 preserves independent affine mask placement; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
+| Native archive | Version 1–5 reader; version 5 preserves clipping relationships; version 4 preserves independent affine mask placement; version 2 preserves Curves/Levels and version 3 protects new mask/crossfade semantics; UTF-8 manifest, pixel/mask data and input limits |
 | PSD | Bounded PSD v1 RGB/8 raw/PackBits/ZIP/ZIP-prediction channels; Unicode names, DPI, raster offsets/visibility/opacity/blend keys and placed user masks; not lossless Photoshop roundtripping |
 | PSB/high-bit/CMYK PSD | Rejected rather than silently interpreted as equivalent |
 | PNG/JPEG/WebP | Raster import/export; JPEG is composited against white |
@@ -39,7 +39,7 @@ This is the implemented boundary, not a list of placeholders presented as comple
 
 ## Explicitly outside the current implementation
 
-Camera Raw, CMYK/Lab/spot channels, 16/32-bit HDR, ICC soft proofing, smart objects, Photoshop-compatible adjustment metadata, pen/path editing, healing/content-aware reconstruction, generative AI, liquify, puppet/perspective warp, layer styles, advanced typography/font discovery, linked assets, group/clipping semantics, actions/macros, plug-ins, video/timeline, Photoshop cloud services, PSB and lossless PSD roundtrips.
+Camera Raw, CMYK/Lab/spot channels, 16/32-bit HDR, ICC soft proofing, smart objects, Photoshop-compatible adjustment metadata, pen/path editing, healing/content-aware reconstruction, generative AI, liquify, puppet/perspective warp, layer styles, advanced typography/font discovery, linked assets, folder-group/advanced clipping semantics, actions/macros, plug-ins, video/timeline, Photoshop cloud services, PSB and lossless PSD roundtrips.
 
 Curves and Levels are independent algorithms and UI components, not a claim of byte-identical Photoshop output. Adjustment masks are supported; black/white eyedroppers and automatic color correction are not included. See [tonal adjustments](tonal-adjustments.md) for exact interpolation, channel order and interaction behavior.
 

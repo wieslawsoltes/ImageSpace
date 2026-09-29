@@ -11,12 +11,24 @@ public sealed class IconView : SKCanvasElement
     public string Icon
     {
         get => _icon;
-        set { if (_icon == value) return; _icon = value; Invalidate(); }
+        set
+        {
+            if (_icon == value)
+                return;
+            _icon = value;
+            Invalidate();
+        }
     }
     public SKColor Tint
     {
         get => _tint;
-        set { if (_tint == value) return; _tint = value; Invalidate(); }
+        set
+        {
+            if (_tint == value)
+                return;
+            _tint = value;
+            Invalidate();
+        }
     }
     public IconView(string icon)
     {
@@ -60,6 +72,7 @@ public sealed class IconView : SKCanvasElement
             "trash" => "M5 6 L19 6 M9 6 L9 3 L15 3 L15 6 M7 8 L8 21 L16 21 L17 8 M10 10 L10 18 M14 10 L14 18",
             "link" => "M9 15 L15 9 M9 7 L12 4 C17 -1 25 7 20 12 L17 15 M7 9 L4 12 C-1 17 7 25 12 20 L15 17",
             "unlink" => "M9 7 L12 4 C17 -1 25 7 20 12 L17 15 M7 9 L4 12 C-1 17 7 25 12 20 L15 17 M3 3 L21 21",
+            "clipping" => "M6 4 L6 13 Q6 16 9 16 L19 16 M15 12 L19 16 L15 20",
             "mask" => "M3 5 L21 5 L21 19 L3 19 Z M12 8 C18 8 18 16 12 16 C6 16 6 8 12 8 Z",
             "adjust" => "M12 3 C24 3 24 21 12 21 C0 21 0 3 12 3 Z M12 3 L12 21 M14 5 L14 19 M16 6 L16 18",
             "undo" => "M8 6 L3 10 L8 14 M3 10 L15 10 C24 10 23 21 15 21",

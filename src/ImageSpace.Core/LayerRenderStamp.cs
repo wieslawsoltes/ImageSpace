@@ -36,7 +36,8 @@ public readonly record struct LayerRenderStamp(
     float Amount,
     float Secondary,
     CurvesAdjustment Curves,
-    LevelsAdjustment Levels)
+    LevelsAdjustment Levels,
+    bool IsClipped = false)
 {
     public static LayerRenderStamp Capture(Layer layer)
     {
@@ -75,6 +76,7 @@ public readonly record struct LayerRenderStamp(
             layer.Amount,
             layer.Secondary,
             layer.Curves,
-            layer.Levels);
+            layer.Levels,
+            layer.IsClipped);
     }
 }

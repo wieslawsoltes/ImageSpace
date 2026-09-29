@@ -50,7 +50,7 @@ History lets you return to previous edits. Redo remains available until a new ed
 
 ## Save and recover
 
-**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Tone-only files use manifest version 2. Adjustment masks, non-default density/feather and fractional adjustment crossfades require version 3. Independent mask placement/link metadata requires version 4; the reader accepts versions 1–4. Older readers reject unsupported versions rather than silently dropping the new features. History and transient selections are not stored in archives.
+**Ctrl+S writes `.imagespace`**, the editable roundtrip format. Tone-only files use manifest version 2. Adjustment masks, non-default density/feather and fractional adjustment crossfades require version 3. Independent mask placement/link metadata requires version 4; the reader accepts versions 1–5; clipping relationships require version 5. Older readers reject unsupported versions rather than silently dropping the new features. History and transient selections are not stored in archives.
 
 Browser saves are downloads. Native saves use file pickers; cancellation does not mark the document as saved. PNG/JPEG/WebP export the visible composite. JPEG places transparency against white.
 
@@ -85,7 +85,7 @@ Select → Expand selection, Contract selection, Border selection and Smooth sel
 
 ## Extended PSD interchange
 
-PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names and resolution are retained. Simple user-mask data is placed into the pixel layer’s coordinates, honoring disabled/inverted/default coverage and supported density/feather parameters. Layer masks remain editable after import. Embedded profiles, vector/group/clipping semantics and advanced metadata are warned about rather than silently claimed to survive. Export uses ZIP raster channels by default; application shapes/type/transforms and masks are still rasterized by the export callback.
+PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names and resolution are retained. Simple user-mask data is placed into the pixel layer’s coordinates, honoring disabled/inverted/default coverage and supported density/feather parameters. Layer masks remain editable after import. Embedded profiles, vector/folder-group/advanced clipping semantics and advanced metadata are warned about rather than silently claimed to survive. Export uses ZIP raster channels by default; application shapes/type/transforms and masks are still rasterized by the export callback.
 
 ## Move a mask independently
 

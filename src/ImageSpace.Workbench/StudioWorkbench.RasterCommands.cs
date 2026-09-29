@@ -107,6 +107,8 @@ public sealed partial class StudioWorkbench
         var index = upper is null ? -1 : document.Layers.IndexOf(upper);
         if (index < 1 || upper!.Locked)
             return;
+        if (LayerClipping.IsMember(document.Layers, index) || LayerClipping.IsMember(document.Layers, index - 1))
+            throw new InvalidOperationException("Merge Down cannot partially flatten a clipping chain. Release its clipping relationships or use Flatten Image.");
         var lower = document.Layers[index - 1];
         if (lower.Locked)
             throw new InvalidOperationException("Unlock the lower layer before merging.");

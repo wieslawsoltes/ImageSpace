@@ -52,4 +52,4 @@ CI emits `layer-tests.json` and `layer-performance-results.json` alongside the e
 
 ## Scope
 
-This increment does not implement clipping-mask chains, layer groups, smart objects, high-bit/CMYK/ICC workflows, advanced type/paths/styles/warps/healing, PSB, or lossless Photoshop metadata roundtrips. These remain separate compatibility work.
+This increment does not implement folder groups, non-default clipping-group options, smart objects, high-bit/CMYK/ICC workflows, advanced type/paths/styles/warps/healing, PSB, or lossless Photoshop metadata roundtrips. These remain separate compatibility work.

@@ -21,11 +21,19 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.4.0-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.5.0-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
-## New in 0.4
+## New in 0.5
+
+**Editable clipping-mask chains.** Clip raster, shape, type and adjustment layers to a shared content base. Cached Skia blenders preserve its alpha across all sixteen supported blend modes. The base opacity and blend apply once to the group. Layer commands, Ctrl+Alt+G, indented thumbnails, bent-arrow indicators, underlined base names and a procedural clipping study are included.
+
+**Fewer GPU dispatches.** Adjacent color filters fuse into one WGSL pass while preserving each stage's RGBA8 rounding. Spatial filters remain explicit boundaries. Resident sessions reuse their CPU/GPU parameter arenas and expose logical-operation versus physical-dispatch counters. The unfused reference mode remains available for differential testing.
+
+Native archive v5 retains editable clipping relationships; bounded RGB/8 PSD raster interchange retains standard clipping flags. [Clipping and fusion contracts, validation and limits](docs/clipping-and-fusion.md).
+
+## Filter Gallery (0.4)
 
 **An ordered Filter Gallery backed by resident GPU sessions.** Preview, reorder, bypass and combine up to sixteen filters, compare with the original, then apply the complete recipe as one undoable edit. Cancel changes nothing; Repeat filter stack reuses the accepted settings. Preview images are sampled and coalesced without rebuilding the main retained selection UI.
 
@@ -562,6 +570,7 @@ dotnet run --project tests/ImageSpace.MaskTests -c Release
 dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
 dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
 dotnet run --project tests/ImageSpace.LayerTests -c Release
+dotnet run --project tests/ImageSpace.ClippingTests -c Release
 dotnet run --project tests/ImageSpace.FilterStackTests -c Release
 dotnet run --project tests/ImageSpace.PreviewTests -c Release
 dotnet run --project tests/ImageSpace.Benchmarks -c Release
@@ -576,9 +585,9 @@ Build, desktop, Pages, release and formatting workflows are under `.github/workf
 
 ## Files and limits
 
-**Use `.imagespace` for editable roundtrips and retain original imports.** The native reader accepts versions 1–4. Tone settings require version 2; adjustment masks, density/feather and fractional adjustment crossfades require version 3; independent mask placement requires version 4. The writer selects the minimal required version. Applying a raster mask leaves ordinary pixel data and does not itself require a new version. Older readers must reject unsupported versions instead of silently changing appearance.
+**Use `.imagespace` for editable roundtrips and retain original imports.** The native reader accepts versions 1–5. Tone settings require version 2; adjustment masks, density/feather and fractional adjustment crossfades require version 3; independent mask placement requires version 4; clipping relationships require version 5. The writer selects the minimal required version. Applying a raster mask leaves ordinary pixel data and does not itself require a new version. Older readers must reject unsupported versions instead of silently changing appearance.
 
-PSD import supports version-1 RGB/8 raw, PackBits, ZIP and row-predicted ZIP channels, Unicode names, resolution and placed user masks with supported density/feather metadata. Smart objects, editable Photoshop type/adjustments, groups, clipping chains and ICC profiles remain outside the interchange boundary. PSD export rasterizes type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
+PSD import supports version-1 RGB/8 raw, PackBits, ZIP and row-predicted ZIP channels, Unicode names, resolution and placed user masks with supported density/feather metadata. Smart objects, editable Photoshop type/adjustments, folder groups, non-default clipping blend-group options and ICC profiles remain outside the interchange boundary. PSD export rasterizes type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
 
 Working limits: 8192 pixels per side, 16 megapixels per surface, 128 layers and twelve documents. These are safety limits, not guarantees that all combinations fit a browser tab. Local recovery covers the active document and is not a cloud backup.
 

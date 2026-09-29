@@ -90,6 +90,7 @@ public sealed class ImageDocument
             layer.Curves.Validate();
             layer.Levels.Validate();
         }
+        LayerClipping.Validate(Layers);
         if (Selection is not null && (Selection.Width != Width || Selection.Height != Height))
             throw new InvalidDataException("Selection dimensions differ from the canvas.");
         if (ActiveLayer is null && Layers.Count > 0)

@@ -42,7 +42,8 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     {
         get => _tool; set
         {
-            if (_tool == value && _gesture == "") return;
+            if (_tool == value && _gesture == "")
+                return;
             CancelGesture();
             _tool = value;
             InvalidateOverlay();
@@ -91,7 +92,8 @@ public sealed partial class ImageViewport : UserControl, IDisposable
     }
     private void Changed(object? sender, EventArgs e)
     {
-        if (e is EditorChangedEventArgs { Change: EditorChange.SavedState }) return;
+        if (e is EditorChangedEventArgs { Change: EditorChange.SavedState })
+            return;
         var previousPreview = _maskPreview;
         if (!_session.Document.EditMask || _session.Document.ActiveLayer?.Mask is null ||
             _previewLayerId != _session.Document.ActiveLayerId)
@@ -101,10 +103,15 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         }
         if (e is EditorChangedEventArgs { Change: EditorChange.ActiveTarget } && previousPreview == MaskPreviewMode.Composite)
             InvalidateOverlay();
-        else Invalidate();
+        else
+            Invalidate();
     }
     /// <summary>Invalidate scene and interaction drawings for actual content/view changes.</summary>
-    public void Invalidate() { _imageCanvas.Invalidate(); _canvas.Invalidate(); }
+    public void Invalidate()
+    {
+        _imageCanvas.Invalidate();
+        _canvas.Invalidate();
+    }
     /// <summary>Cursor, selection ants and handles do not re-submit the image compositor.</summary>
     public void InvalidateOverlay() => _canvas.Invalidate();
     public Vector2 ToDocument(Vector2 p) => (p - Pan) / Zoom;
@@ -189,9 +196,17 @@ public sealed partial class ImageViewport : UserControl, IDisposable
                 // This is geometry-only read state, not an editable pixel clone.
                 _original = new Layer
                 {
-                    X = layer.X, Y = layer.Y, ScaleX = layer.ScaleX, ScaleY = layer.ScaleY,
-                    Rotation = layer.Rotation, Width = layer.Width, Height = layer.Height,
-                    Kind = layer.Kind, Mask = layer.Mask, MaskLinked = layer.MaskLinked, MaskPlacement = layer.MaskPlacement
+                    X = layer.X,
+                    Y = layer.Y,
+                    ScaleX = layer.ScaleX,
+                    ScaleY = layer.ScaleY,
+                    Rotation = layer.Rotation,
+                    Width = layer.Width,
+                    Height = layer.Height,
+                    Kind = layer.Kind,
+                    Mask = layer.Mask,
+                    MaskLinked = layer.MaskLinked,
+                    MaskPlacement = layer.MaskPlacement
                 };
                 var targetName = IsIndependentMask(layer) ? "mask" : "layer";
                 _pendingTransform = (_handle == 8 ? "Rotate " : _handle >= 0 ? "Transform " : "Move ") + targetName;
@@ -263,7 +278,10 @@ public sealed partial class ImageViewport : UserControl, IDisposable
             }
             _canvas.CapturePointer(e.Pointer);
             e.Handled = true;
-            if (_session.IsInTransaction) Invalidate(); else InvalidateOverlay();
+            if (_session.IsInTransaction)
+                Invalidate();
+            else
+                InvalidateOverlay();
         }
         catch (Exception ex) { CancelGesture(); Status?.Invoke(ex.Message); }
     }
@@ -276,8 +294,16 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         var layer = _session.Document.ActiveLayer;
         if (_pendingTransform.Length != 0)
         {
-            if (Vector2.Distance(world, _start) * Zoom < 1) { InvalidateOverlay(); return; }
-            try { _session.Begin(_pendingTransform); _pendingTransform = ""; }
+            if (Vector2.Distance(world, _start) * Zoom < 1)
+            {
+                InvalidateOverlay();
+                return;
+            }
+            try
+            {
+                _session.Begin(_pendingTransform);
+                _pendingTransform = "";
+            }
             catch (Exception error) { CancelGesture(); Status?.Invoke(error.Message); return; }
         }
         if (_gesture == "pan")
@@ -338,9 +364,12 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         }
         else if (_gesture == "crop")
             _crop = (_start, world);
-        if (_gesture is "pan" or "move" or "resize" or "rotate" or "paint" or "shape") Invalidate();
-        else InvalidateOverlay();
-        if (_gesture != "") e.Handled = true;
+        if (_gesture is "pan" or "move" or "resize" or "rotate" or "paint" or "shape")
+            Invalidate();
+        else
+            InvalidateOverlay();
+        if (_gesture != "")
+            e.Handled = true;
     }
     private void Released(object sender, PointerRoutedEventArgs e)
     {
@@ -426,21 +455,7 @@ public sealed partial class ImageViewport : UserControl, IDisposable
         InvalidateOverlay();
     }
     private static SelectionCombine Combine(VirtualKeyModifiers keys) => (keys & VirtualKeyModifiers.Shift) != 0 ? ((keys & VirtualKeyModifiers.Menu) != 0 ? SelectionCombine.Intersect : SelectionCombine.Add) : (keys & VirtualKeyModifiers.Menu) != 0 ? SelectionCombine.Subtract : SelectionCombine.Replace;
-    private Layer? HitLayer(Vector2 world)
-    {
-        foreach (var layer in _session.Document.Layers.AsEnumerable().Reverse())
-        {
-            if (!layer.Visible || layer.Kind == LayerKind.Adjustment)
-                continue;
-            var local = layer.ToLocal(world);
-            if (local.X < 0 || local.Y < 0 || local.X > layer.Width || local.Y > layer.Height)
-                continue;
-            if (layer.Pixels is not null && layer.Pixels.Get((int)local.X, (int)local.Y).A < 8)
-                continue;
-            return layer;
-        }
-        return null;
-    }
+    private Layer? HitLayer(Vector2 world) => LayerHitTesting.Hit(_session.Document, world);
     private static readonly Vector2[] Handles = [new(0, 0), new(.5f, 0), new(1, 0), new(1, .5f), new(1, 1), new(.5f, 1), new(0, 1), new(0, .5f)];
     private int HitHandle(Layer layer, Vector2 screen)
     {

@@ -29,12 +29,17 @@ public sealed partial class EditorSession
         Document = document;
     }
     /// <summary>Changes requiring recovery; active-target selection and saving do not advance it.</summary>
-    public long ContentRevision { get; private set; }
+    public long ContentRevision
+    {
+        get; private set;
+    }
     public void Notify(EditorChange change = EditorChange.Document)
     {
-        if (!Enum.IsDefined(change)) throw new ArgumentOutOfRangeException(nameof(change));
+        if (!Enum.IsDefined(change))
+            throw new ArgumentOutOfRangeException(nameof(change));
         Revision++;
-        if (change == EditorChange.Document) ContentRevision++;
+        if (change == EditorChange.Document)
+            ContentRevision++;
         Changed?.Invoke(this, EditorChangedEventArgs.For(change));
     }
     public void Begin(string name)
@@ -109,7 +114,8 @@ public sealed partial class EditorSession
     }
     public void MarkSaved()
     {
-        if (_savedVersion == _version) return;
+        if (_savedVersion == _version)
+            return;
         _savedVersion = _version;
         Notify(EditorChange.SavedState);
     }
@@ -117,7 +123,8 @@ public sealed partial class EditorSession
     {
         if (IsInTransaction)
             return;
-        if (Document.ActiveLayerId == id && !Document.EditMask) return;
+        if (Document.ActiveLayerId == id && !Document.EditMask)
+            return;
         if (Document.Layers.Any(l => l.Id == id))
         {
             Document.ActiveLayerId = id;
@@ -136,6 +143,8 @@ public sealed partial class EditorSession
         var layer = Document.ActiveLayer;
         if (layer is null)
             return;
+        if (DuplicateClippingBase(layer))
+            return;
         Execute("Duplicate layer", d => { var copy = layer.Snapshot(); copy.Id = Guid.NewGuid(); copy.Name += " copy"; d.Layers.Insert(d.Layers.IndexOf(layer) + 1, copy); d.ActiveLayerId = copy.Id; });
     }
     public void DeleteLayer()
@@ -143,19 +152,9 @@ public sealed partial class EditorSession
         var layer = Document.ActiveLayer;
         if (layer is null || layer.Locked)
             return;
-        Execute("Delete layer", d => { var i = d.Layers.IndexOf(layer); d.Layers.Remove(layer); d.ActiveLayerId = d.Layers.Count == 0 ? Guid.Empty : d.Layers[Math.Clamp(i - 1, 0, d.Layers.Count - 1)].Id; d.EditMask = false; });
+        Execute("Delete layer", d => { var i = d.Layers.IndexOf(layer); ReleaseDeletedBase(i); d.Layers.Remove(layer); d.ActiveLayerId = d.Layers.Count == 0 ? Guid.Empty : d.Layers[Math.Clamp(i - 1, 0, d.Layers.Count - 1)].Id; d.EditMask = false; });
     }
-    public void MoveLayer(int delta)
-    {
-        var layer = Document.ActiveLayer;
-        if (layer is null)
-            return;
-        var index = Document.Layers.IndexOf(layer);
-        var target = Math.Clamp(index + delta, 0, Document.Layers.Count - 1);
-        if (target == index)
-            return;
-        Execute("Reorder layer", d => { d.Layers.RemoveAt(index); d.Layers.Insert(target, layer); });
-    }
+    public void MoveLayer(int delta) => MoveLayerStack(delta);
     public void AddMask()
     {
         if (Document.ActiveLayer is not { Locked: false } layer || layer.Mask is not null)

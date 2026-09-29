@@ -29,43 +29,62 @@ fn pack(v:vec4f)->u32 { return evenRound(v.x)|(evenRound(v.y)<<8u)|(evenRound(v.
 fn offset(x:i32,y:i32)->u32 { return u32(clamp(y,0,i32(p.height)-1))*p.width+u32(clamp(x,0,i32(p.width)-1)); }
 fn weight(i:i32)->f32 { let at=u32(i+i32(p.radius)); return p.weights[at/4u][at%4u]; }
 `;
-  const pointCode = header + `
+  // Reused by ordinary and fused pipelines. Pack/decode remains between logical
+  // operations: shader fusion must NOT replace the application's RGBA8 stage rounding.
+  const colorFunctions = `
+fn colorPixel(value:u32, kind:u32, amount:f32, secondary:f32)->u32 {
+  let v=decode(value);
+  if (v.w==0.0) { return 0u; }
+  let c=v.xyz; let l=dot(c,vec3f(0.2126,0.7152,0.0722)); var rgb=c;
+  switch kind {
+    case 0u: { rgb=vec3f(255.0)-c; }
+    case 1u: { rgb=vec3f(l); }
+    case 2u: { rgb=vec3f(dot(c,vec3f(.393,.769,.189)),dot(c,vec3f(.349,.686,.168)),dot(c,vec3f(.272,.534,.131))); }
+    case 3u: { let contrast=1.0+clamp(secondary,-99.0,300.0)/100.0; rgb=(c-vec3f(127.5))*contrast+vec3f(127.5+amount*2.55); }
+    case 4u: { rgb=vec3f(l)+(c-vec3f(l))*max(0.0,1.0+amount/100.0); }
+    case 5u: { rgb=255.0*pow(c/255.0,vec3f(1.0/clamp(amount,.1,10.0))); }
+    case 6u: { rgb=select(vec3f(0.0),vec3f(255.0),l>=clamp(amount,0.0,255.0)); }
+    case 7u: {
+      let levels=f32(clamp(i32(amount),2,256)-1); let q=c/255.0*levels;
+      rgb=vec3f(f32(evenRound(q.x)),f32(evenRound(q.y)),f32(evenRound(q.z)))*255.0/levels;
+    }
+    default: {}
+  }
+  return pack(vec4f(rgb,v.w));
+}`;
+  const pointCode = header + colorFunctions + `
 @group(0) @binding(0) var<storage,read> input:array<u32>;
 @group(0) @binding(1) var<storage,read_write> output:array<u32>;
 @compute @workgroup_size(8,8)
 fn main(@builtin(global_invocation_id) id:vec3u) {
   if ((id.x>=p.width)||(id.y>=p.height)) { return; }
-  let i=id.y*p.width+id.x; let v=decode(input[i]);
-  // Color-only kernels retain their established transparent-pixel normalization.
-  // Convolution must evaluate hidden RGB too: a later spatial stage can sample it.
-  if ((v.w==0.0)&&(p.kind<8u)) { output[i]=0u; return; }
-  let c=v.xyz; let l=dot(c,vec3f(0.2126,0.7152,0.0722)); var rgb=c;
-  switch p.kind {
-    case 0u: { rgb=vec3f(255.0)-c; }
-    case 1u: { rgb=vec3f(l); }
-    case 2u: { rgb=vec3f(dot(c,vec3f(.393,.769,.189)),dot(c,vec3f(.349,.686,.168)),dot(c,vec3f(.272,.534,.131))); }
-    case 3u: { let contrast=1.0+clamp(p.secondary,-99.0,300.0)/100.0; rgb=(c-vec3f(127.5))*contrast+vec3f(127.5+p.amount*2.55); }
-    case 4u: { rgb=vec3f(l)+(c-vec3f(l))*max(0.0,1.0+p.amount/100.0); }
-    case 5u: { rgb=255.0*pow(c/255.0,vec3f(1.0/clamp(p.amount,.1,10.0))); }
-    case 6u: { rgb=select(vec3f(0.0),vec3f(255.0),l>=clamp(p.amount,0.0,255.0)); }
-    case 7u: {
-      let levels=f32(clamp(i32(p.amount),2,256)-1); let q=c/255.0*levels;
-      rgb=vec3f(f32(evenRound(q.x)),f32(evenRound(q.y)),f32(evenRound(q.z)))*255.0/levels;
-    }
-    default: {
-      var sum=vec3f(0.0); let strength=clamp(select(p.amount,1.0,p.amount==0.0),.1,5.0);
-      for (var y=-1;y<=1;y++) { for (var x=-1;x<=1;x++) {
-        let at=(y+1)*3+x+1; var w=0.0;
-        if (p.kind==10u) { let kernel=array<f32,9>(-2,-1,0,-1,1,1,0,1,2); w=kernel[at]; }
-        else if (p.kind==11u) { w=select(-1.0,8.0,at==4); }
-        else if (at==4) { w=1.0+4.0*strength; }
-        else if ((abs(x)+abs(y))==1) { w=-strength; }
-        sum+=decode(input[offset(i32(id.x)+x,i32(id.y)+y)]).xyz*w;
-      }}
-      rgb=sum+vec3f(select(0.0,128.0,p.kind==10u));
-    }
+  let i=id.y*p.width+id.x;
+  if (p.kind<8u) { output[i]=colorPixel(input[i],p.kind,p.amount,p.secondary); return; }
+  let v=decode(input[i]);
+  // Spatial operations intentionally retain hidden RGB for subsequent stages.
+  var sum=vec3f(0.0); let strength=clamp(select(p.amount,1.0,p.amount==0.0),.1,5.0);
+  for (var y=-1;y<=1;y++) { for (var x=-1;x<=1;x++) {
+    let at=(y+1)*3+x+1; var w=0.0;
+    if (p.kind==10u) { let kernel=array<f32,9>(-2,-1,0,-1,1,1,0,1,2); w=kernel[at]; }
+    else if (p.kind==11u) { w=select(-1.0,8.0,at==4); }
+    else if (at==4) { w=1.0+4.0*strength; }
+    else if ((abs(x)+abs(y))==1) { w=-strength; }
+    sum+=decode(input[offset(i32(id.x)+x,i32(id.y)+y)]).xyz*w;
+  }}
+  output[i]=pack(vec4f(sum+vec3f(select(0.0,128.0,p.kind==10u)),v.w));
+}`;
+  const fusedCode = header + colorFunctions + `
+@group(0) @binding(0) var<storage,read> input:array<u32>;
+@group(0) @binding(1) var<storage,read_write> output:array<u32>;
+@compute @workgroup_size(8,8)
+fn main(@builtin(global_invocation_id) id:vec3u) {
+  if ((id.x>=p.width)||(id.y>=p.height)) { return; }
+  let pixel=id.y*p.width+id.x; var value=input[pixel];
+  for (var i=0u;i<p.radius;i++) {
+    let operation=p.weights[i];
+    value=colorPixel(value,u32(operation.x),operation.y,operation.z);
   }
-  output[i]=pack(vec4f(rgb,v.w));
+  output[pixel]=value;
 }`;
   const horizontalCode = header + `
 @group(0) @binding(0) var<storage,read> input:array<u32>;
@@ -143,7 +162,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           ] });
           const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
           const pipelines = {};
-          for (const [name, code] of Object.entries({ point: pointCode, horizontal: horizontalCode, vertical: verticalCode, pixelate: pixelateCode })) {
+          for (const [name, code] of Object.entries({ point: pointCode, fused: fusedCode, horizontal: horizontalCode, vertical: verticalCode, pixelate: pixelateCode })) {
             const module = device.createShaderModule({ label: 'ImageSpace ' + name, code });
             const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error');
             if (errors.length) throw new Error(errors.map(e => `${name} ${e.lineNum}:${e.linePos} ${e.message}`).join('\n'));
@@ -179,7 +198,11 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       return { kind: operation.kind, amount, secondary, enabled: operation.enabled !== false };
     }).filter(operation => operation.enabled && !(operation.kind === 'GaussianBlur' && operation.amount <= 0));
   }
-  async function createSession(bytes, width, height) {
+  async function createSession(bytes, width, height, options = {}) {
+    if (!options || typeof options !== 'object' ||
+        (options.fuseColorOperations !== undefined && typeof options.fuseColorOperations !== 'boolean'))
+      throw new TypeError('fuseColorOperations must be a boolean.');
+    const fuseColors = options.fuseColorOperations !== false;
     validatePixels(bytes, width, height);
     const snapshot = bytes.slice();
     if (!await initialize()) return null;
@@ -188,17 +211,20 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       if (!runtime) return null;
       const { device, layout, pipelines } = runtime, length = snapshot.byteLength;
       const stride = Math.ceil(816 / device.limits.minUniformBufferOffsetAlignment) * device.limits.minUniformBufferOffsetAlignment;
-      const fixedBytes = length * 4 + stride * 32;
+      const fixedBytes = length * 4 + stride * 16;
       if (length > device.limits.maxStorageBufferBindingSize || length > device.limits.maxBufferSize || reserved + fixedBytes > budget) return null;
       const resources = [], bindings = new Map();
       let closed = false, scratch = null, last = null, owned = 0;
-      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0 };
+      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0, logicalOperations: 0, fusedPasses: 0, parameterBytesUploaded: 0 };
       const allocate = (size, usage, label) => {
         if (reserved + size > budget || size > device.limits.maxBufferSize) throw new RangeError('Resident GPU memory budget exceeded.');
         const buffer = device.createBuffer({ size, usage, label: 'ImageSpace ' + label });
         resources.push(buffer); reserved += size; owned += size; stats.bufferAllocations++;
         return buffer;
       };
+      // A session owns one reusable CPU parameter arena as well as its GPU arena.
+      const parameters = new ArrayBuffer(stride * 16);
+      const parameterBytes = new Uint8Array(parameters);
       let source, ping, readback, uniforms;
       const ensure = () => {
         if (closed || current !== runtime) throw new Error('The resident filter session is disposed or its GPU device was lost.');
@@ -232,16 +258,29 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           if (length * 4 > device.limits.maxStorageBufferBindingSize) throw new RangeError('Blur scratch exceeds the adapter storage-binding limit.');
           scratch = allocate(length * 4, GPUBufferUsage.STORAGE, 'premultiplied blur scratch');
         }
-        const parameters = new ArrayBuffer(stride * 32), plan = [];
+        parameterBytes.fill(0);
+        const plan = [];
         let input = source, slot = 0, targetIndex = 0;
-        for (const op of operations) {
+        for (let index = 0; index < operations.length;) {
+          const op = operations[index];
+          let end = index + 1;
+          if (fuseColors && kinds.get(op.kind) < 8)
+            while (end < operations.length && kinds.get(operations[end].kind) < 8) end++;
           const at = slot * stride;
           const integers = new Uint32Array(parameters, at, 8), floats = new Float32Array(parameters, at, 204);
           integers.set([width, height, kinds.get(op.kind), 0]);
           floats[4] = op.amount; floats[5] = op.secondary;
           integers[6] = Math.max(2, Math.min(128, Math.trunc(op.amount)));
           const output = ping[targetIndex]; targetIndex ^= 1;
-          if (op.kind === 'GaussianBlur') {
+          if (end - index > 1) {
+            integers[3] = end - index;
+            for (let i = index; i < end; i++) {
+              const operation = operations[i], offset = 8 + (i - index) * 4;
+              floats[offset] = kinds.get(operation.kind);
+              floats[offset + 1] = operation.amount; floats[offset + 2] = operation.secondary;
+            }
+            plan.push({ name: 'fused', input, output, slot });
+          } else if (op.kind === 'GaussianBlur') {
             const sigma = Math.max(.1, Math.min(32, op.amount)), radius = Math.ceil(sigma * 3);
             integers[3] = radius;
             let total = 0; const weights = [];
@@ -250,10 +289,11 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
             plan.push({ name: 'horizontal', input, output: scratch, slot });
             plan.push({ name: 'vertical', input: scratch, output, slot });
           } else plan.push({ name: op.kind === 'Pixelate' ? 'pixelate' : 'point', input, output, slot, size: integers[6] });
-          input = output; slot++;
+          input = output; slot++; index = end;
         }
         if (!plan.length) { last = source; return; }
         device.queue.writeBuffer(uniforms, 0, parameters, 0, slot * stride);
+        stats.parameterBytesUploaded += slot * stride;
         const encoder = device.createCommandEncoder({ label: 'ImageSpace resident filter stack' });
         for (const op of plan) {
           const key = resources.indexOf(op.input) + ':' + resources.indexOf(op.output);
@@ -270,8 +310,9 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           if (op.name === 'pixelate') pass.dispatchWorkgroups(Math.ceil(width / op.size), Math.ceil(height / op.size));
           else pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
           pass.end(); stats.dispatches++;
+          if (op.name === 'fused') stats.fusedPasses++;
         }
-        device.queue.submit([encoder.finish()]); stats.submissions++; last = input;
+        device.queue.submit([encoder.finish()]); stats.submissions++; stats.logicalOperations += operations.length; last = input;
       };
       const run = (operations, read) => {
         const captured = normalize(operations);
@@ -296,7 +337,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           source = allocate(length, usage, 'immutable source');
           ping = [allocate(length, usage, 'ping'), allocate(length, usage, 'pong')];
           readback = allocate(length, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST, 'readback');
-          uniforms = allocate(stride * 32, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'parameters');
+          uniforms = allocate(stride * 16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, 'parameters');
           device.queue.writeBuffer(source, 0, snapshot);
           stats.sourceUploads++; stats.uploadedBytes += length;
         });
@@ -323,7 +364,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
     apply: (bytes, width, height, kind, amount = 0, secondary = 0) => applyChain(bytes, width, height, [{ kind, amount, secondary }]),
     supports: kind => kinds.has(kind),
     describe: () => ({ available: !!current, backend: description, maximumBufferSize: current?.device.limits.maxBufferSize ?? 0,
-      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? 4 : 0 }),
+      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? 5 : 0 }),
     shaderSource: pointCode,
     createHandle: async (base64, width, height) => {
       const session = await createSession(from64(base64), width, height);

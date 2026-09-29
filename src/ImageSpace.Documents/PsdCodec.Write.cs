@@ -19,6 +19,8 @@ public static partial class PsdCodec
             throw new ArgumentOutOfRangeException(nameof(compression));
         if (composite.Width != document.Width || composite.Height != document.Height)
             throw new ArgumentException("Composite dimensions differ.", nameof(composite));
+        if (document.Layers.Any(layer => layer.Visible && layer.IsClipped && layer.Kind == LayerKind.Adjustment))
+            throw new InvalidOperationException("PSD raster export cannot preserve clipped adjustments. Export a flattened compatibility document.");
         var layers = new List<EncodedLayer>();
         long budget = 0;
         foreach (var layer in document.Layers.AsEnumerable().Reverse().Where(layer => layer.Kind != LayerKind.Adjustment))
@@ -85,7 +87,7 @@ public static partial class PsdCodec
             ASCII(writer, "8BIM");
             ASCII(writer, BlendKey(item.Metadata.Blend));
             writer.Write(Rgba32.Byte(item.Metadata.Opacity * 255));
-            writer.Write((byte)0);
+            writer.Write(item.Metadata.IsClipped ? (byte)1 : (byte)0);
             writer.Write((byte)(item.Metadata.Visible ? 0 : 2));
             writer.Write((byte)0);
             var extraOffset = output.Position;
@@ -115,8 +117,8 @@ public static partial class PsdCodec
             PatchLength(extraOffset, output.Position - extraStart);
         }
         foreach (var layer in layers)
-        foreach (var plane in layer.Channels)
-            writer.Write(plane);
+            foreach (var plane in layer.Channels)
+                writer.Write(plane);
         if ((output.Position - infoStart) % 2 != 0)
             writer.Write((byte)0);
         PatchLength(infoLengthOffset, output.Position - infoStart);
@@ -132,11 +134,11 @@ public static partial class PsdCodec
                 var plane = Plane(composite, c);
                 if (compression == PsdCompression.ZipPrediction)
                     for (var y = 0; y < composite.Height; y++)
-                    for (var x = composite.Width - 1; x > 0; x--)
-                    {
-                        var p = y * composite.Width + x;
-                        plane[p] = unchecked((byte)(plane[p] - plane[p - 1]));
-                    }
+                        for (var x = composite.Width - 1; x > 0; x--)
+                        {
+                            var p = y * composite.Width + x;
+                            plane[p] = unchecked((byte)(plane[p] - plane[p - 1]));
+                        }
                 zip.Write(plane);
             }
         }

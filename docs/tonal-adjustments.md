@@ -94,7 +94,7 @@ Histograms in the tone inspector are explicitly sampled from a preview with a ma
 
 Tone-only documents use manifest **version 2**, retaining all channel settings and curve points. Adjustment masks, non-default mask density/feather and fractional adjustment output crossfades require **version 3**. The reader accepts versions 1–3 and supplies identity tone settings for older files; files without newer features retain their minimal writer version. Older readers reject unsupported versions rather than silently dropping their appearance.
 
-PSD adjustment compatibility is not implemented. PSD export with visible adjustment layers produces the existing flattened compatibility image; save `.imagespace` to retain editability. Curves/Levels currently operate in the RGB8 workflow and do not provide CMYK, Lab, HDR, ICC soft proofing, clipping groups, black/white eyedroppers or automatic color correction.
+PSD adjustment compatibility is not implemented. PSD export with visible adjustment layers produces the existing flattened compatibility image; save `.imagespace` to retain editability. Curves/Levels currently operate in the RGB8 workflow and do not provide CMYK, Lab, HDR, ICC soft proofing, non-default clipping-group options, black/white eyedroppers or automatic color correction.
 
 Adjustment masks, density/feather, mask painting and view-only grayscale/overlay inspection are described in [mask editing](mask-editing.md). Masks are linked to the layer transform; groups and independently transformed masks remain outside this implementation.
 

@@ -31,6 +31,12 @@ public sealed class Layer
     {
         get; set;
     }
+    /// <summary>Clip this layer to the nearest preceding non-clipped content layer.
+    /// Consecutive clipped layers form a single alpha-preserving compositing group.</summary>
+    public bool IsClipped
+    {
+        get; set;
+    }
     public float Opacity { get; set; } = 1;
     public LayerBlend Blend
     {

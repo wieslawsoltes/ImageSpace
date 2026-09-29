@@ -18,7 +18,7 @@ Masks start linked to their layer transform. They can now be unlinked, transform
 
 ## File compatibility
 
-The native reader accepts versions 1, 2, 3 and 4. Independent placement and unlink metadata require version 4. Feature-free legacy files retain their minimal writer version. Adjustment masks, non-default density/feather, and fractional adjustment output crossfades require version 3. Readers that only support versions 1/2 reject these files rather than silently ignore their new semantics. Authored mask pixels and non-destructive parameters roundtrip separately.
+The native reader accepts versions 1–5; clipping relationships require version 5. Independent placement and unlink metadata require version 4. Feature-free legacy files retain their minimal writer version. Adjustment masks, non-default density/feather, and fractional adjustment output crossfades require version 3. Readers that only support versions 1/2 reject these files rather than silently ignore their new semantics. Authored mask pixels and non-destructive parameters roundtrip separately.
 
 Legacy version-1/2 files use the current compositor when opened. In particular, partial-opacity nonlinear adjustments now crossfade the clamped full effect; older parameter-interpolation rendering is not preserved as a separate legacy mode. Keep originals when exact historical pixel output is required.
 
