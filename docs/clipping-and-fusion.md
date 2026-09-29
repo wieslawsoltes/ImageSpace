@@ -55,3 +55,7 @@ Folder groups and arbitrary hierarchy reparenting, alternative clipping blend-gr
 - Adobe PSD layer-record specification: https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/
 - Skia runtime effects and premultiplied color: https://skia.org/docs/user/sksl/
 - WGSL buffer layout and shader semantics: https://www.w3.org/TR/WGSL/
+
+## Inserting adjustments into a clipping unit
+
+`EditorSession.AddAdjustment` inserts above the active layer and inherits its clipping unit when the active target is a base or clipped member. This keeps the existing members attached to their original base, including when the insertion splits a chain. Outside a clipping unit the adjustment is global. Undo restores the previous ordering and active target; invalid kinds are rejected before a transaction. The workbench uses this same reusable command.

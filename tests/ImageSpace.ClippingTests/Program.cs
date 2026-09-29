@@ -401,6 +401,8 @@ Test("native clipping change invalidates cached document preview", () =>
     cache.Get(doc, 2, 64, renderer);
     Check(cache.Builds == 2);
 });
+ClippingInsertionTests.Register(Test);
+
 var failed = 0;
 var results = new List<object>();
 foreach (var (name, body) in tests)
