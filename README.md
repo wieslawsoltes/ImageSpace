@@ -84,6 +84,20 @@ Bounded PSD decoding includes compressed channels/export, Unicode names, resolut
 
 `ImageSpace.Benchmarks` compares frozen pre-optimization algorithms with newer paths. `ImageSpace.LayerTests` compares warmed direct versus isolated raster compositing. Both record median timings, sample data and allocation scope without asserting machine-dependent speed thresholds. CI retains `performance-results.json` and `layer-performance-results.json`.
 
+## Download
+
+Every [release](https://github.com/wieslawsoltes/ImageSpace/releases/latest) ships a self-contained, single-file desktop app — no .NET install needed:
+
+| OS | x64 | Arm64 |
+| --- | --- | --- |
+| Windows | `ImageSpace-<version>-win-x64.zip` | `ImageSpace-<version>-win-arm64.zip` |
+| macOS | `ImageSpace-<version>-osx-x64.tar.gz` | `ImageSpace-<version>-osx-arm64.tar.gz` |
+| Linux | `ImageSpace-<version>-linux-x64.tar.gz` | `ImageSpace-<version>-linux-arm64.tar.gz` |
+
+Extract and run `ImageSpace` (`ImageSpace.exe` on Windows). Builds are not code-signed yet: on macOS clear the quarantine flag with `xattr -d com.apple.quarantine ImageSpace`; on Windows choose **More info → Run anyway** in SmartScreen. Verify downloads against `SHA256SUMS`.
+
+The libraries below are published to [NuGet.org](https://www.nuget.org/packages?q=ImageSpace), e.g. `dotnet add package ImageSpace.Core --prerelease`.
+
 ## Reusable libraries
 
 | Package | Responsibility |
@@ -100,11 +114,11 @@ Bounded PSD decoding includes compressed channels/export, Unicode names, resolut
 | `ImageSpace.Editor` | Embeddable viewport, camera and pointer gestures |
 | `ImageSpace.Workbench` | Workspace, panels, tonal inspector, commands and multi-document workflows |
 
-The first eight packages have no Uno dependency. Controls, Editor and Workbench target browser and desktop. CI produces all eleven NuGet packages and the standalone `@wieslawsoltes/imagespace-webgpu` tarball. **Registry publication is separate** and requires release credentials; artifacts do not imply NuGet.org/npm publication.
+The first eight packages have no Uno dependency. Controls, Editor and Workbench target browser and desktop. CI produces all eleven NuGet packages and the standalone `@wieslawsoltes/imagespace-webgpu` tarball. Tagged releases publish the NuGet packages to NuGet.org; npm publication of the WebGPU tarball remains separate and requires its own credentials.
 
 ### Embed the viewport
 
-Reference the source project or a CI-produced package in a local NuGet feed:
+Reference the NuGet.org packages, the source projects or a CI-produced package in a local NuGet feed:
 
 ```csharp
 using ImageSpace.Core;
@@ -157,7 +171,7 @@ npm run test:browser
 
 Browser tests require the collected `site/` tree. They use real pointer, keyboard, file-chooser and download events, with opt-in read-only control geometry—not JavaScript mutation hooks. Pixel assertions cover painting, undo, tonal previews and mask application. Generated scripts are syntax-checked before publication. Pages verifies source identity and reruns acceptance on the deployed URL.
 
-Build, desktop, Pages, tag-release and formatting workflows are under `.github/workflows`. Native distributions are unsigned developer builds; production signing/notarization is not implied. See [development](docs/development.md).
+Build, desktop, Pages, release and formatting workflows are under `.github/workflows`. **Release** runs for `v*` tags or a supplied manual version: it runs the validation suites and browser acceptance, publishes self-contained single-file desktop executables for Windows, macOS and Linux (x64 and arm64), packs the eleven libraries with symbols and the WebGPU tarball, and emits `SHA256SUMS`. Tags attach all assets to a GitHub Release and publish the NuGet packages to NuGet.org with [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (OIDC, no stored API key) from the protected `nuget` environment. Manual runs are dry runs that build and upload every asset as workflow artifacts but publish nothing. Native distributions are unsigned developer builds; production signing/notarization is not implied. See [development](docs/development.md).
 
 ## Files and limits
 

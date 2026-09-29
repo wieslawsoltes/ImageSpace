@@ -50,14 +50,14 @@ It writes `artifacts/layer-tests.json` and `artifacts/layer-performance-results.
 - **Build:** all engine/raster/layer regressions and benchmarks, browser publish, real-browser acceptance, dual-target library builds, NuGet/WebGPU packages, source and validation artifacts.
 - **Desktop:** independent Windows, Linux and macOS self-contained host builds.
 - **GitHub Pages:** consumes only a successful non-PR main Build artifact, verifies its commit and WebAssembly content, deploys it, verifies public `build-info.json`, and repeats browser acceptance on the deployed URL.
-- **Release:** `v*` tags validate and attach source, packages, browser and native artifacts; registry publication requires explicit credentials.
+- **Release:** `v*` tags (or manual dry runs with a version input) validate and build source, packages, browser and self-contained single-file desktop executables for win/linux/osx x64 and arm64 with `SHA256SUMS`. Tags attach them to a GitHub Release and publish the NuGet packages via NuGet.org Trusted Publishing from the `nuget` environment; manual runs publish nothing.
 - **Format source:** explicit maintenance using the repository's EditorConfig.
 
 The Pages workflow never substitutes a hand-written HTML landing page for a failed Uno application. Deployment identity is recorded in `build-info.json`. Compilation is not treated as proof that the browser paints pixels or that the public site serves the intended commit.
 
 ## Package distribution
 
-All eleven library projects are packable. Uno libraries target both `net10.0-browserwasm` and `net10.0-desktop`; engine libraries target `net10.0`. Use CI-produced `.nupkg` files from a local NuGet feed or reference projects directly. Keep the managed/native Skia ABI matched in consuming hosts.
+All eleven library projects are packable. Uno libraries target both `net10.0-browserwasm` and `net10.0-desktop`; engine libraries target `net10.0`. Tagged releases publish them to NuGet.org; alternatively use CI-produced `.nupkg` files from a local NuGet feed or reference projects directly. Keep the managed/native Skia ABI matched in consuming hosts.
 
 Build the standalone browser package with:
 
@@ -66,7 +66,7 @@ npm run pack:webgpu
 npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.3.2-alpha.1.tgz
 ```
 
-For public registry releases configure `NUGET_API_KEY` and/or `NPM_TOKEN` in repository secrets. The default workflow does not fabricate credentials or equate artifacts with registry publication. Signing/notarization is separate and must be configured for production native distribution.
+NuGet.org publication uses [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): the tag-only `nuget` job in `release.yml` exchanges a GitHub OIDC token for a short-lived key in the protected `nuget` environment, so no NuGet API key is stored. npm publication of the WebGPU tarball still requires an `NPM_TOKEN` secret and runs only for tags. Signing/notarization is separate and must be configured for production native distribution.
 
 ## Change policy
 

@@ -2,18 +2,57 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for a dry run (tags publish; manual runs only build and upload artifacts)
+        required: true
+        default: '0.3.2-alpha.1'
 permissions:
-  contents: write
-  id-token: write
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  APP_NAME: ImageSpace
+  APP_PROJECT: src/ImageSpace.App
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        name: Resolve release version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        shell: bash
+        run: |
+          VERSION="$INPUT_VERSION"
+          if [ "$REF_TYPE" = tag ]; then VERSION="${REF_NAME#v}"; fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version '$VERSION'" >&2; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   packages:
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
     env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      VERSION: ${{ needs.version.outputs.version }}
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -21,10 +60,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: Validate and publish assets
+      - name: Validate and build assets
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           dotnet workload install wasm-tools --skip-manifest-update
           python3 scripts/fetch-assets.py
           dotnet run --project tests/ImageSpace.Tests -c Release
@@ -40,7 +78,7 @@ jobs:
             dotnet pack "$project" -c Release -p:Version="$VERSION" -o artifacts/packages
           done
           test "$(find artifacts/packages -name '*.nupkg' | wc -l)" -eq 11
-          dotnet publish src/ImageSpace.App -c Release -f net10.0-browserwasm -p:Version="$VERSION" -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
+          dotnet publish "$APP_PROJECT" -c Release -f net10.0-browserwasm -p:Version="$VERSION" -p:WasmShellWebAppBasePath=/ImageSpace/ -o artifacts/publish
           VERSION="$VERSION" python3 scripts/collect-site.py artifacts/publish site
           npm ci
           npx playwright install --with-deps chromium
@@ -51,11 +89,8 @@ jobs:
           npm run pack:webgpu
           git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
           cd site && zip -qr ../artifacts/ImageSpace-browser.zip .
-      - name: Publish NuGet when explicitly configured
-        if: env.NUGET_API_KEY != ''
-        run: dotnet nuget push 'artifacts/packages/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
       - name: Publish npm when explicitly configured
-        if: env.NODE_AUTH_TOKEN != ''
+        if: github.ref_type == 'tag' && env.NODE_AUTH_TOKEN != ''
         run: npm publish artifacts/packages/*.tgz --access public --provenance
       - uses: actions/upload-artifact@v7
         with:
@@ -64,6 +99,13 @@ jobs:
             artifacts/packages
             artifacts/ImageSpace-source.zip
             artifacts/ImageSpace-browser.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -74,50 +116,140 @@ jobs:
             artifacts/browser-results.json
             artifacts/webgpu-results.json
           if-no-files-found: warn
-  native:
+
+  desktop:
+    name: Desktop (${{ matrix.rid }})
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            rid: linux-x64
-          - os: windows-latest
-            rid: win-x64
-          - os: macos-latest
-            rid: osx-arm64
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+        rid: [win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      RID: ${{ matrix.rid }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - shell: bash
-        run: python3 scripts/fetch-assets.py
-      - shell: bash
-        run: dotnet publish src/ImageSpace.App -c Release -f net10.0-desktop -r ${{ matrix.rid }} -p:ImageSpaceDesktopOnly=true -p:Version="${GITHUB_REF_NAME#v}" --self-contained true -o artifacts/native
-      - name: Archive native distribution
+      - name: Fetch licensed font assets
         shell: bash
-        run: python3 -c "import shutil; shutil.make_archive('ImageSpace-${{ matrix.rid }}','zip','artifacts/native')"
+        run: python3 scripts/fetch-assets.py
+      - name: Publish self-contained single-file executable
+        shell: bash
+        run: |
+          dotnet publish "$APP_PROJECT" -c Release -f net10.0-desktop -r "$RID" --self-contained true \
+            -p:ImageSpaceDesktopOnly=true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=none -p:DebugSymbols=false -p:Version="$VERSION" \
+            -o "artifacts/desktop/$RID"
+      - name: Package executable
+        shell: bash
+        run: |
+          OUT="artifacts/desktop/$RID"
+          find "$OUT" -name '*.pdb' -delete
+          mkdir -p artifacts/dist
+          BASE="$APP_NAME-$VERSION-$RID"
+          if [[ "$RID" == win-* ]]; then
+            mv "$OUT/$APP_NAME.App.exe" "$OUT/$APP_NAME.exe"
+            test "$(find "$OUT" -type f | wc -l)" -eq 1
+            (cd "$OUT" && zip -q "$GITHUB_WORKSPACE/artifacts/dist/$BASE.zip" "$APP_NAME.exe")
+          else
+            mv "$OUT/$APP_NAME.App" "$OUT/$APP_NAME"
+            chmod +x "$OUT/$APP_NAME"
+            test "$(find "$OUT" -type f | wc -l)" -eq 1
+            tar -C "$OUT" -czf "artifacts/dist/$BASE.tar.gz" "$APP_NAME"
+          fi
+          ls -la artifacts/dist
       - uses: actions/upload-artifact@v7
         with:
-          name: ImageSpace-release-${{ matrix.rid }}
-          path: ImageSpace-${{ matrix.rid }}.zip
+          name: desktop-${{ matrix.rid }}
+          path: artifacts/dist/*
+          if-no-files-found: error
+
   release:
-    needs: [packages,native]
+    needs: [version, packages, desktop]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/download-artifact@v8
         with:
           pattern: ImageSpace-release-*
           path: release
           merge-multiple: true
-      - name: Publish GitHub prerelease or release
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: release
+          merge-multiple: true
+      - name: Collect assets and generate release checksums
+        shell: bash
+        run: |
+          mkdir -p dist
+          find release -type f -print0 | while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            if [ -e "dist/$name" ]; then echo "Duplicate release asset name: $name" >&2; exit 1; fi
+            cp "$file" "dist/$name"
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: imagespace-release
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish GitHub prerelease or release for version tag
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
           flags=()
-          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" --repo '${{ github.repository }}' --verify-tag --generate-notes "${flags[@]}"
-          find release -type f -print0 | xargs -0 -r gh release upload "$GITHUB_REF_NAME" --repo '${{ github.repository }}' --clobber
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" --verify-tag --generate-notes "${flags[@]}"
+          fi
+          gh release upload "$TAG" dist/* --repo "$REPO" --clobber
+
+  nuget:
+    name: Publish to NuGet.org (Trusted Publishing)
+    needs: [version, release]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget-packages
+          path: packages
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check NuGet user
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
+        run: test -n "$NUGET_USER" || { echo 'Set the NUGET_USER variable (your nuget.org profile name) for this repository or its nuget environment.' >&2; exit 1; }
+      - name: NuGet login (OIDC → short-lived API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
+      - name: Push packages
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push "packages/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
