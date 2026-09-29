@@ -6,10 +6,11 @@ public sealed record GpuCapabilities(bool Available, string Backend, long Maximu
 public interface IComputeFilterBackend
 {
     Task<GpuCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default);
-    /// <summary>Returns null for unsupported kernels. Implementations must not mutate source pixels.</summary>
     Task<PixelSurface?> ApplyAsync(PixelSurface source, FilterKind kind, float amount, float secondary, CancellationToken cancellationToken = default);
 }
 public static class GpuKernels
 {
-    public static bool Supports(FilterKind kind) => kind is FilterKind.Invert or FilterKind.Grayscale or FilterKind.Sepia or FilterKind.BrightnessContrast or FilterKind.Saturation or FilterKind.Gamma or FilterKind.Threshold or FilterKind.Posterize;
+    // Seeded Noise retains the existing .NET Random sequence on the CPU; do not
+    // silently replace it with a different GPU random distribution/sequence.
+    public static bool Supports(FilterKind kind) => Enum.IsDefined(kind) && kind != FilterKind.Noise;
 }
