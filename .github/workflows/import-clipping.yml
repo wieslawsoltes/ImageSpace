@@ -29,8 +29,10 @@ jobs:
           assert hashlib.sha256(patch).hexdigest()=='c944cb0eb2887452e681dc58604bd9ffbcb540aa306f20108538ce5c006cca8b'
           Path('/tmp/imagespace-clipping.patch').write_bytes(patch)
           PY
-          git apply --check /tmp/imagespace-clipping.patch
-          git apply /tmp/imagespace-clipping.patch
+          git apply --3way --check /tmp/imagespace-clipping.patch
+          git apply --3way /tmp/imagespace-clipping.patch
+          test -z "$(git ls-files -u)"
+          grep -q 'tests/ImageSpace.PreviewTests -c Release' README.md
           rm -r .github/clipping
           rm .github/workflows/import-clipping.yml
           git config user.name 'github-actions[bot]'
