@@ -15,8 +15,8 @@ export const createSession=(rgba,width,height,options)=>globalThis.imageSpaceGpu
 await writeFile(new URL('index.d.ts',dist),`export type FilterKind='Invert'|'Grayscale'|'Sepia'|'BrightnessContrast'|'Saturation'|'Gamma'|'Threshold'|'Posterize'|'GaussianBlur'|'Sharpen'|'Emboss'|'Edges'|'Pixelate';
 export interface FilterOperation {readonly kind:FilterKind;readonly amount?:number;readonly secondary?:number;readonly enabled?:boolean;}
 export interface Capabilities {available:boolean;backend:string;maximumBufferSize:number;residentBytes:number;residentBudgetBytes:number;liveSessions:number;pipelineCount:number;}
-export interface SessionOptions {readonly fuseColorOperations?:boolean;}
-export interface SessionStatistics {logicalOperations:number;fusedPasses:number;parameterBytesUploaded:number;sourceUploads:number;uploadedBytes:number;submissions:number;dispatches:number;readbacks:number;bufferAllocations:number;bindGroupBuilds:number;residentBytes:number;disposed:boolean;}
+export interface SessionOptions {readonly fuseColorOperations?:boolean;readonly gaussianBlur?:'auto'|'direct'|'tiled';}
+export interface SessionStatistics {tiledGaussianPasses:number;directGaussianPasses:number;gaussianInputReads:number;logicalOperations:number;fusedPasses:number;parameterBytesUploaded:number;sourceUploads:number;uploadedBytes:number;submissions:number;dispatches:number;readbacks:number;bufferAllocations:number;bindGroupBuilds:number;residentBytes:number;disposed:boolean;}
 export interface FilterSession {
   readonly width:number;readonly height:number;readonly generation:number;
   /** Restarts from the captured immutable source and reads the final RGBA8 output once. */
