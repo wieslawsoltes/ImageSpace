@@ -1,0 +1,47 @@
+name: Finish clipping adjustment insertion
+on:
+  push:
+    branches: [feat/clipping-color-fusion]
+    paths: [.github/workflows/finish-clipping-insertion.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/clipping-color-fusion
+          fetch-depth: 0
+      - name: Connect the tested adjustment command and regression group
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/ImageSpace.Workbench/StudioWorkbench.Commands.cs')
+          source=p.read_text()
+          marker='    private void AddAdjustment(AdjustmentKind kind) =>'
+          assert source.count(marker)==1
+          assert source.rstrip().endswith('}));\n}')
+          p.write_text(source[:source.index(marker)]+'    private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.AddAdjustment(kind));\n}\n')
+          p=Path('tests/ImageSpace.ClippingTests/Program.cs')
+          source=p.read_text()
+          assert source.count('var failed = 0;')==1 and 'ClippingInsertionTests.Register' not in source
+          p.write_text(source.replace('var failed = 0;', 'ClippingInsertionTests.Register(Test);\n\nvar failed = 0;',1))
+          p=Path('docs/clipping-and-fusion.md')
+          p.write_text(p.read_text().rstrip()+'\n\n## Inserting adjustments into a clipping unit\n\n`EditorSession.AddAdjustment` inserts above the active layer and inherits its clipping unit when the active target is a base or clipped member. This keeps the existing members attached to their original base, including when the insertion splits a chain. Outside a clipping unit the adjustment is global. Undo restores the previous ordering and active target; invalid kinds are rejected before a transaction. The workbench uses this same reusable command.\n')
+          PY
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Validate exact-version clipping regressions
+        run: dotnet run --project tests/ImageSpace.ClippingTests -c Release
+      - name: Commit only the connected source changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/ImageSpace.Workbench/StudioWorkbench.Commands.cs tests/ImageSpace.ClippingTests/Program.cs docs/clipping-and-fusion.md
+          git diff --cached --check
+          git commit -m 'Preserve clipping membership when inserting adjustments and register insertion regressions'
+          git push origin HEAD:feat/clipping-color-fusion
