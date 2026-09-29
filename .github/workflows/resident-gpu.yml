@@ -15,6 +15,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Verify stack transactions and generate actual C# reference pixels
+        run: dotnet run --project tests/ImageSpace.FilterStackTests -c Release
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -27,4 +32,6 @@ jobs:
         if: always()
         with:
           name: ImageSpace-resident-gpu-validation
-          path: artifacts/resident-gpu*.json
+          path: |
+            artifacts/resident-gpu*.json
+            artifacts/filter-stack*.json

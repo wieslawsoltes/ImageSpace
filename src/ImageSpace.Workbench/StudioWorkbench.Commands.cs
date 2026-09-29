@@ -84,8 +84,7 @@ public sealed partial class StudioWorkbench
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
                 {
-                    if (document.ActiveLayer is { } layer)
-                        layer.Locked = !layer.Locked;
+                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
                 })), has);
                 break;
             case "Type":
@@ -109,6 +108,9 @@ public sealed partial class StudioWorkbench
                 Item("Create layer mask from selection", "", () => Run(Session.AddMask), editable && active?.Mask is null);
                 break;
             case "Filter":
+                Item("Filter Gallery…", "", () => _ = FilterGalleryAsync(), Session.CanApplyFilterStack);
+                Item("Repeat filter stack", "", () => _ = ApplyRecipeAsync(_lastFilterRecipe), Session.CanApplyFilterStack && _lastFilterRecipe.Length > 0);
+                Line();
                 Item("Gaussian blur…", "", () => _ = FilterDialogAsync(FilterKind.GaussianBlur), editable && pixels);
                 Item("Sharpen…", "", () => _ = FilterDialogAsync(FilterKind.Sharpen), editable && pixels);
                 Item("Add noise…", "", () => _ = FilterDialogAsync(FilterKind.Noise), editable && pixels);
@@ -148,6 +150,7 @@ public sealed partial class StudioWorkbench
                 Item("ImageSpace user guide", "F1", () => _ = HelpAsync());
                 Item("Features and compatibility", "", () => _ = CapabilitiesAsync());
                 Item("Applying masks and rendering", "", () => _ = ShowTextAsync("Applying masks and rendering", MaskApplicationHelp));
+                Item("Filter Gallery and GPU residency", "", () => _ = ShowTextAsync("Filter Gallery", FilterGalleryHelp));
                 Item("Rendering diagnostics", "", () => _ = DiagnosticsAsync());
                 Item("About ImageSpace", "", () => _ = AboutAsync());
                 break;
@@ -164,15 +167,8 @@ public sealed partial class StudioWorkbench
 
     private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.Execute("New " + kind + " adjustment", document =>
     {
-        var layer = new Layer
-        {
-            Name = kind.ToString(),
-            Kind = LayerKind.Adjustment,
-            Adjustment = kind,
-            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0,
-            Width = document.Width,
-            Height = document.Height
-        };
+        var layer = new Layer { Name = kind.ToString(), Kind = LayerKind.Adjustment, Adjustment = kind,
+            Amount = kind == AdjustmentKind.GaussianBlur ? 4 : 0, Width = document.Width, Height = document.Height };
         var index = document.ActiveLayer is { } active ? document.Layers.IndexOf(active) + 1 : document.Layers.Count;
         document.Layers.Insert(index, layer);
         document.ActiveLayerId = layer.Id;
