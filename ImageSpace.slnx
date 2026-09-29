@@ -20,6 +20,7 @@
     <Project Path="tests/ImageSpace.RegressionTests/ImageSpace.RegressionTests.csproj" />
     <Project Path="tests/ImageSpace.LayerTests/ImageSpace.LayerTests.csproj" />
     <Project Path="tests/ImageSpace.FilterStackTests/ImageSpace.FilterStackTests.csproj" />
+    <Project Path="tests/ImageSpace.PreviewTests/ImageSpace.PreviewTests.csproj" />
   </Folder>
   <Folder Name="/MaskTests/">
     <Project Path="tests/ImageSpace.MaskTests/ImageSpace.MaskTests.csproj" />

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ImageSpace.Skia;
 using SkiaSharp;
 using Uno.WinUI.Graphics2DSK;
 using Windows.Foundation;
@@ -9,26 +10,35 @@ internal sealed class FilterPreviewCanvas : SKCanvasElement, IDisposable
 {
     private SKImage? _before, _after;
     private float _split;
+    private bool _disposed;
     public float Split
     {
-        get => _split; set
+        get => _split;
+        set
         {
-            _split = Math.Clamp(value, 0, 1);
+            if (!float.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            var next = Math.Clamp(value, 0, 1);
+            if (_split == next) return;
+            _split = next;
             Invalidate();
         }
     }
-    public void SetBefore(PixelSurface pixels)
+
+    public void SetBefore(PixelSurface pixels) => Replace(ref _before, pixels);
+    public void SetAfter(PixelSurface pixels) => Replace(ref _after, pixels);
+
+    private void Replace(ref SKImage? target, PixelSurface pixels)
     {
-        _before?.Dispose();
-        _before = Image(pixels);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(pixels);
+        // Preserve the last good image if allocation or pixel conversion fails.
+        var image = Image(pixels);
+        var previous = target;
+        target = image;
+        previous?.Dispose();
         Invalidate();
     }
-    public void SetAfter(PixelSurface pixels)
-    {
-        _after?.Dispose();
-        _after = Image(pixels);
-        Invalidate();
-    }
+
     private static SKImage Image(PixelSurface pixels)
     {
         using var bitmap = new SKBitmap(new SKImageInfo(pixels.Width, pixels.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
@@ -36,11 +46,11 @@ internal sealed class FilterPreviewCanvas : SKCanvasElement, IDisposable
         Marshal.Copy(bytes, 0, bitmap.GetPixels(), bytes.Length);
         return SKImage.FromBitmap(bitmap);
     }
+
     protected override void RenderOverride(SKCanvas canvas, Size area)
     {
         canvas.Clear(new SKColor(35, 35, 35));
-        if (_before is null)
-            return;
+        if (_disposed || _before is null || area.Width <= 0 || area.Height <= 0) return;
         var scale = Math.Min((float)area.Width / _before.Width, (float)area.Height / _before.Height);
         var width = _before.Width * scale;
         var height = _before.Height * scale;
@@ -56,14 +66,10 @@ internal sealed class FilterPreviewCanvas : SKCanvasElement, IDisposable
                 for (var x = bounds.Left; x < bounds.Right; x += 12)
                     if (((int)((x - bounds.Left) / 12) + (int)((y - bounds.Top) / 12)) % 2 == 0)
                         canvas.DrawRect(x, y, 12, 12, paint);
-            canvas.DrawImage(_after ?? _before, bounds);
-            if (_split > 0)
+            ImageComparisonRenderer.Draw(canvas, _before, _after ?? _before, bounds, _split);
+            if (_split is > 0 and < 1)
             {
                 var edge = bounds.Left + bounds.Width * _split;
-                canvas.Save();
-                canvas.ClipRect(new SKRect(bounds.Left, bounds.Top, edge, bounds.Bottom));
-                canvas.DrawImage(_before, bounds);
-                canvas.Restore();
                 paint.Color = SKColors.White;
                 paint.StrokeWidth = 1;
                 canvas.DrawLine(edge, bounds.Top, edge, bounds.Bottom, paint);
@@ -71,8 +77,11 @@ internal sealed class FilterPreviewCanvas : SKCanvasElement, IDisposable
         }
         finally { canvas.RestoreToCount(save); }
     }
+
     public new void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _before?.Dispose();
         _after?.Dispose();
         _before = _after = null;

@@ -7,7 +7,7 @@ on:
       version:
         description: Version for a dry run (tags publish; manual runs only build and upload artifacts)
         required: true
-        default: '0.3.2-alpha.1'
+        default: '0.4.0-alpha.1'
 permissions:
   contents: read
 concurrency:
@@ -71,6 +71,8 @@ jobs:
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
           dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
           dotnet run --project tests/ImageSpace.LayerTests -c Release
+          dotnet run --project tests/ImageSpace.FilterStackTests -c Release
+          dotnet run --project tests/ImageSpace.PreviewTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do
@@ -82,6 +84,7 @@ jobs:
           VERSION="$VERSION" python3 scripts/collect-site.py artifacts/publish site
           npm ci
           npx playwright install --with-deps chromium
+          npx playwright test --config playwright.gpu.config.mjs
           npm run test:browser
           mkdir -p site/screenshots
           cp artifacts/screenshots/*.png site/screenshots/
@@ -115,6 +118,9 @@ jobs:
             artifacts/*performance-results.json
             artifacts/browser-results.json
             artifacts/webgpu-results.json
+            artifacts/resident-gpu*.json
+            artifacts/*filter-fixtures.json
+            artifacts/filter-stack-fixtures.json
           if-no-files-found: warn
 
   desktop:
