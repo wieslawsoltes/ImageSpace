@@ -41,14 +41,12 @@ foreach (var kind in Enum.GetValues<FilterKind>())
 Test("stack order, reset-to-source, disabled stages and ownership", async () =>
 {
     var source = Source(); var captured = source.Snapshot();
-    await using var session = new CpuFilterSession(source);
-    source.Fill(Rgba32.Black);
+    await using var session = new CpuFilterSession(source); source.Fill(Rgba32.Black);
     FilterOperation[] recipe = [new(FilterKind.Sepia), new(FilterKind.Invert), new(FilterKind.Noise, 20, Enabled: false)];
     var result = await session.ApplyAsync(recipe);
     Equal(FilterEngine.Apply(FilterEngine.Apply(captured, FilterKind.Sepia), FilterKind.Invert), result);
     var second = await session.ApplyAsync(recipe); Equal(result, second);
     result.Fill(Rgba32.White); Equal(captured, await session.ApplyAsync([]));
-    // Await before starting any span-based comparison; spans cannot survive suspension.
     var reversed = await session.ApplyAsync([new(FilterKind.Invert), new(FilterKind.Sepia)]);
     Check(!second.ToRgba().SequenceEqual(reversed.ToRgba()));
 });
@@ -72,8 +70,7 @@ Test("already cancelled and disposed sessions reject without work", async () =>
 {
     var session = new CpuFilterSession(Source());
     await Reject(() => session.ApplyAsync([new(FilterKind.Invert)], new CancellationToken(true)));
-    await session.DisposeAsync(); await session.DisposeAsync();
-    await Reject(() => session.ApplyAsync([]));
+    await session.DisposeAsync(); await session.DisposeAsync(); await Reject(() => session.ApplyAsync([]));
 });
 Test("stack is one undo entry and preserves exact authored source on undo", async () =>
 {
@@ -111,8 +108,7 @@ Test("selection is applied once after the complete stack", async () =>
     var session = Session(); var source = session.Document.ActiveLayer!.Pixels!.Snapshot();
     var mask = new PixelSurface(source.Width, source.Height); mask.Set(2, 3, Rgba32.White); session.Document.Selection = mask;
     await session.ApplyFilterStackAsync([new(FilterKind.Invert)], Cpu);
-    var output = session.Document.ActiveLayer!.Pixels!;
-    var expected = FilterEngine.Apply(source, FilterKind.Invert);
+    var output = session.Document.ActiveLayer!.Pixels!; var expected = FilterEngine.Apply(source, FilterKind.Invert);
     for (var y = 0; y < source.Height; y++) for (var x = 0; x < source.Width; x++)
         Check(output.Get(x, y) == (x == 2 && y == 3 ? expected.Get(x, y) : source.Get(x, y)));
 });
@@ -131,8 +127,7 @@ foreach (var kind in new[] { "revision", "pixels", "selection", "transform", "ca
         if (mode == "selection") session.Document.Selection = new PixelSurface(source.Width, source.Height);
         if (mode == "transform") layer.X += 1;
         if (mode == "cancel") token.Cancel();
-        pending.SetResult(Source());
-        await Reject(() => task);
+        pending.SetResult(Source()); await Reject(() => task);
         Check(session.History.Count == 0 && backend.Disposed && !session.IsInTransaction);
     });
 }
@@ -156,6 +151,22 @@ Test("backend failure preserves document and disposes resources", async () =>
     await Reject(() => session.ApplyFilterStackAsync([new(FilterKind.Invert)], (_, _) => Task.FromResult<IFilterSession>(backend)));
     Equal(before, session.Document.ActiveLayer!.Pixels!); Check(session.History.Count == 0 && backend.Disposed);
 });
+Test("transparent spatial output does not depend on tile allocation order", () =>
+{
+    var source = new PixelSurface(257, 2);
+    source.Set(64, 1, Rgba32.White); source.Set(192, 1, Rgba32.White);
+    var output = FilterEngine.Apply(source, FilterKind.Emboss);
+    foreach (var x in new[] { 8, 136, 256 }) Check(output.Get(x, 0) == new Rgba32(128, 128, 128, 0));
+    Equal(output, FilterPixels.FromRgba(output.Width, output.Height, output.ToRgba()));
+    return Task.CompletedTask;
+});
+Test("exact result import retains hidden RGB independent of source ownership", () =>
+{
+    byte[] bytes = [31, 47, 89, 0, 51, 71, 101, 1];
+    var source = FilterPixels.FromRgba(2, 1, bytes); bytes[0] = 255;
+    Check(source.Get(0, 0) == new Rgba32(31, 47, 89, 0));
+    return Task.CompletedTask;
+});
 var failures = 0; var results = new List<object>();
 foreach (var (name, body) in tests)
 {
@@ -172,6 +183,33 @@ var fixtures = Enum.GetValues<FilterKind>().Where(kind => kind != FilterKind.Noi
         expected = FilterEngine.Apply(fixture, kind, op.Amount, op.Secondary).ToRgba() };
 });
 File.WriteAllText("artifacts/filter-stack-fixtures.json", JsonSerializer.Serialize(new { width = fixture.Width, height = fixture.Height, source = fixture.ToRgba(), cases = fixtures }));
+var transparent = new PixelSurface(19, 17);
+var row = new byte[19 * 4];
+byte[] alphaValues = [0, 1, 127, 255];
+for (var y = 0; y < transparent.Height; y++)
+{
+    for (var x = 0; x < transparent.Width; x++)
+    {
+        row[x * 4] = (byte)(x * 23 + y * 7); row[x * 4 + 1] = (byte)(x * 7 + y * 19);
+        row[x * 4 + 2] = (byte)(x * 11 + y * 13); row[x * 4 + 3] = alphaValues[(x + y) % 4];
+    }
+    transparent.WriteRow(0, y, row);
+}
+FilterOperation[][] recipes = [
+    [new(FilterKind.Emboss), new(FilterKind.Edges)],
+    [new(FilterKind.Edges), new(FilterKind.Sharpen)],
+    [new(FilterKind.GaussianBlur, .3f), new(FilterKind.Emboss)],
+    [new(FilterKind.Pixelate, 2), new(FilterKind.Sharpen)],
+    [new(FilterKind.GaussianBlur, 2), new(FilterKind.Grayscale), new(FilterKind.Pixelate, 3)]
+];
+var chains = new List<object>();
+foreach (var recipe in recipes)
+{
+    await using var backend = new CpuFilterSession(transparent);
+    var result = await backend.ApplyAsync(recipe);
+    chains.Add(new { operations = recipe.Select(op => new { kind = op.Kind.ToString(), amount = op.Amount, secondary = op.Secondary }).ToArray(), expected = result.ToRgba() });
+}
+File.WriteAllText("artifacts/transparent-filter-fixtures.json", JsonSerializer.Serialize(new { width = transparent.Width, height = transparent.Height, source = transparent.ToRgba(), chains }));
 Console.WriteLine($"FILTER_STACK_TESTS total={tests.Count} passed={tests.Count - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 

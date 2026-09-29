@@ -1,4 +1,4 @@
-// Independent scalar reference for the established ImageSpace RGBA8 filter semantics.
+// Independent scalar reference for ImageSpace's explicit straight/premultiplied RGBA8 semantics.
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 function byte(v) { v=clamp(v,0,255);const lo=Math.floor(v),f=v-lo;return lo+(f>.5||(f===.5&&lo%2===1)?1:0); }
 export function reference(source,width,height,{kind,amount=0,secondary=0}) {
@@ -34,8 +34,9 @@ export function reference(source,width,height,{kind,amount=0,secondary=0}) {
     }
     return out;
   }
+  const convolution=['Sharpen','Emboss','Edges'].includes(kind);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
-    const at=index(x,y),[r,g,b,a]=source.subarray(at,at+4);if(!a)continue;
+    const at=index(x,y),[r,g,b,a]=source.subarray(at,at+4);if(!a&&!convolution)continue;
     const l=r*.2126+g*.7152+b*.0722;let rgb=[r,g,b];
     switch(kind){
       case 'Invert':rgb=rgb.map(c=>255-c);break;

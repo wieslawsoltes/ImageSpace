@@ -46,7 +46,7 @@ internal sealed class BrowserGpuBackend
     {
         if (!GpuKernels.Supports(kind)) return null;
         var result = await BrowserFiles.Filter(Convert.ToBase64String(source.ToRgba()), source.Width, source.Height, kind.ToString(), amount, secondary);
-        return string.IsNullOrEmpty(result) ? null : PixelSurface.FromRgba(source.Width, source.Height, Convert.FromBase64String(result));
+        return string.IsNullOrEmpty(result) ? null : FilterPixels.FromRgba(source.Width, source.Height, Convert.FromBase64String(result));
     }
 }
 internal static partial class BrowserFiles

@@ -36,7 +36,9 @@ fn weight(i:i32)->f32 { let at=u32(i+i32(p.radius)); return p.weights[at/4u][at%
 fn main(@builtin(global_invocation_id) id:vec3u) {
   if ((id.x>=p.width)||(id.y>=p.height)) { return; }
   let i=id.y*p.width+id.x; let v=decode(input[i]);
-  if (v.w==0.0) { output[i]=0u; return; }
+  // Color-only kernels retain their established transparent-pixel normalization.
+  // Convolution must evaluate hidden RGB too: a later spatial stage can sample it.
+  if ((v.w==0.0)&&(p.kind<8u)) { output[i]=0u; return; }
   let c=v.xyz; let l=dot(c,vec3f(0.2126,0.7152,0.0722)); var rgb=c;
   switch p.kind {
     case 0u: { rgb=vec3f(255.0)-c; }
@@ -47,8 +49,7 @@ fn main(@builtin(global_invocation_id) id:vec3u) {
     case 5u: { rgb=255.0*pow(c/255.0,vec3f(1.0/clamp(p.amount,.1,10.0))); }
     case 6u: { rgb=select(vec3f(0.0),vec3f(255.0),l>=clamp(p.amount,0.0,255.0)); }
     case 7u: {
-      let levels=f32(clamp(i32(p.amount),2,256)-1);
-      let q=c/255.0*levels;
+      let levels=f32(clamp(i32(p.amount),2,256)-1); let q=c/255.0*levels;
       rgb=vec3f(f32(evenRound(q.x)),f32(evenRound(q.y)),f32(evenRound(q.z)))*255.0/levels;
     }
     default: {
@@ -114,7 +115,6 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
   for (var n=lane;n<count;n+=64u) { output[(top+n/width)*p.width+left+n%width]=value; }
 }`;
   async function scoped(device, action) {
-    // All calls using the device are serialized; asynchronous error scopes cannot interleave.
     device.pushErrorScope('validation'); device.pushErrorScope('out-of-memory'); device.pushErrorScope('internal');
     let result, failure;
     try { result = await action(); } catch (error) { failure = error; }
@@ -156,6 +156,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       description = 'WebGPU · ' + (adapter.info?.description || adapter.info?.architecture || adapter.info?.vendor || 'compatible adapter');
       device.lost.then(info => {
         for (const session of [...sessions]) if (session.generation === next.generation) session.dispose();
+        for (const [handle, session] of handles) if (session.generation === next.generation) handles.delete(handle);
         if (current === next) { current = null; description = 'Device lost: ' + info.message; }
       });
       return device;
@@ -180,15 +181,13 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
   }
   async function createSession(bytes, width, height) {
     validatePixels(bytes, width, height);
-    // Capture input synchronously, including byteOffset, before adapter acquisition or queue waits.
     const snapshot = bytes.slice();
     if (!await initialize()) return null;
     return exclusive(async () => {
       const runtime = current;
       if (!runtime) return null;
       const { device, layout, pipelines } = runtime, length = snapshot.byteLength;
-      const alignment = device.limits.minUniformBufferOffsetAlignment;
-      const stride = Math.ceil(816 / alignment) * alignment;
+      const stride = Math.ceil(816 / device.limits.minUniformBufferOffsetAlignment) * device.limits.minUniformBufferOffsetAlignment;
       const fixedBytes = length * 4 + stride * 32;
       if (length > device.limits.maxStorageBufferBindingSize || length > device.limits.maxBufferSize || reserved + fixedBytes > budget) return null;
       const resources = [], bindings = new Map();
@@ -233,8 +232,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           if (length * 4 > device.limits.maxStorageBufferBindingSize) throw new RangeError('Blur scratch exceeds the adapter storage-binding limit.');
           scratch = allocate(length * 4, GPUBufferUsage.STORAGE, 'premultiplied blur scratch');
         }
-        const parameters = new ArrayBuffer(stride * 32);
-        const plan = [];
+        const parameters = new ArrayBuffer(stride * 32), plan = [];
         let input = source, slot = 0, targetIndex = 0;
         for (const op of operations) {
           const at = slot * stride;
@@ -246,8 +244,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           if (op.kind === 'GaussianBlur') {
             const sigma = Math.max(.1, Math.min(32, op.amount)), radius = Math.ceil(sigma * 3);
             integers[3] = radius;
-            let total = 0;
-            const weights = [];
+            let total = 0; const weights = [];
             for (let i = -radius; i <= radius; i++) { const w = Math.exp(-i * i / (2 * sigma * sigma)); weights.push(w); total += w; }
             weights.forEach((w, i) => { floats[8 + i] = w / total; });
             plan.push({ name: 'horizontal', input, output: scratch, slot });
@@ -286,8 +283,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       };
       const api = Object.freeze({
         width, height, generation: runtime.generation,
-        apply: operations => run(operations, true),
-        execute: operations => run(operations, false),
+        apply: operations => run(operations, true), execute: operations => run(operations, false),
         read: () => exclusive(async () => {
           ensure();
           try { return await scoped(device, readOutput); } catch (error) { dispose(); throw error; }

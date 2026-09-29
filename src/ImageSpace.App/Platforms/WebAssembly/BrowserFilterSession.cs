@@ -38,24 +38,25 @@ internal sealed class BrowserFilterSession : IFilterSession
         var captured = FilterRecipe.Capture(operations);
         if (_handle is not null && captured.Where(op => op.Enabled).All(op => GpuKernels.Supports(op.Kind)))
         {
+            var handle = _handle;
             try
             {
                 var json = JsonSerializer.Serialize(captured.Select(op => new
                 {
                     kind = op.Kind.ToString(), amount = op.Amount, secondary = op.Secondary, enabled = op.Enabled
                 }).ToArray());
-                var result = await BrowserFiles.EvaluateFilterSession(_handle, json);
+                var result = await BrowserFiles.EvaluateFilterSession(handle, json);
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 Backend = "WebGPU resident stack";
-                return PixelSurface.FromRgba(_width, _height, Convert.FromBase64String(result));
+                return FilterPixels.FromRgba(_width, _height, Convert.FromBase64String(result));
             }
             catch (OperationCanceledException) { throw; }
             catch (ObjectDisposedException) { throw; }
             catch (Exception error)
             {
                 Console.WriteLine("Resident GPU fallback: " + error.Message);
-                BrowserFiles.ReleaseFilterSession(_handle); _handle = null;
+                BrowserFiles.ReleaseFilterSession(handle); _handle = null;
             }
         }
         Backend = "CPU fallback (seeded Noise or unavailable GPU)";
