@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Engine, formats and compositor tests
+      - name: Engine, formats, filter stacks and compositor tests
         run: |
           dotnet run --project tests/ImageSpace.Tests -c Release
           dotnet run --project tests/ImageSpace.RegressionTests -c Release
@@ -30,6 +30,8 @@ jobs:
           dotnet run --project tests/ImageSpace.MaskEditingTests -c Release
           dotnet run --project tests/ImageSpace.CompatibilityTests -c Release
           dotnet run --project tests/ImageSpace.LayerTests -c Release
+          dotnet run --project tests/ImageSpace.FilterStackTests -c Release
+          dotnet run --project tests/ImageSpace.PreviewTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
       - uses: actions/upload-artifact@v7
         if: always()
@@ -50,7 +52,9 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Pointer, keyboard, tonal, mask, file and GPU browser acceptance
+      - name: Resident GPU kernels, actual CSharp parity and resource lifetime
+        run: npx playwright test --config playwright.gpu.config.mjs
+      - name: Pointer, keyboard, gallery, tonal, mask, file and GPU browser acceptance
         run: |
           npm run test:browser
           mkdir -p site/screenshots
@@ -66,6 +70,9 @@ jobs:
           test "$(find artifacts/packages -name '*.nupkg' | wc -l)" -eq 11
       - name: Prepare source archive
         run: git archive --format=zip HEAD -o artifacts/ImageSpace-source.zip
+      - name: Summarize actual validation reports
+        if: always()
+        run: python3 scripts/summarize-validation.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -73,6 +80,10 @@ jobs:
           path: |
             artifacts/browser-results.json
             artifacts/webgpu-results.json
+            artifacts/resident-gpu*.json
+            artifacts/*filter-fixtures.json
+            artifacts/filter-stack-fixtures.json
+            artifacts/validation-summary.json
             artifacts/browser-tests
             artifacts/screenshots
           if-no-files-found: warn

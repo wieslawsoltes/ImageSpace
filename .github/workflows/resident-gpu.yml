@@ -1,0 +1,38 @@
+name: Resident GPU
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: resident-gpu-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Verify stack transactions and generate actual CSharp reference pixels
+        run: dotnet run --project tests/ImageSpace.FilterStackTests -c Release
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Validate real WGSL kernels and resident lifecycle
+        run: npx playwright test --config playwright.gpu.config.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-resident-gpu-validation
+          path: |
+            artifacts/resident-gpu*.json
+            artifacts/filter-stack*.json
+            artifacts/transparent-filter-fixtures.json

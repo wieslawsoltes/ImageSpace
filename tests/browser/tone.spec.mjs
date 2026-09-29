@@ -2,12 +2,9 @@ import { test, expect } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { waitForWorkspace } from './readiness.mjs';
 import { decodePng } from './png.mjs';
+import { waitForControl as control } from './control.mjs';
 
 const state = page => page.evaluate(() => globalThis.imageSpaceDiagnostics);
-async function control(page, name) {
-  await expect.poll(() => page.evaluate(n => globalThis.imageSpaceControls?.some(c => c.name === n && c.enabled), name)).toBe(true);
-  return page.evaluate(n => globalThis.imageSpaceControls.find(c => c.name === n && c.enabled), name);
-}
 async function click(page, name) {
   const c = await control(page, name);
   await page.mouse.click(c.x + c.width / 2, c.y + c.height / 2);
