@@ -1,0 +1,31 @@
+name: Gaussian regression and memory
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gaussian-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Compare exact RGBA output, cancellation and workspace bounds
+        run: dotnet run --project tests/ImageSpace.GaussianTests -c Release
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-gaussian-${{ matrix.os }}
+          path: artifacts/gaussian-*.json
