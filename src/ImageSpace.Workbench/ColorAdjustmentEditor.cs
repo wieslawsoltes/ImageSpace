@@ -11,6 +11,7 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
     private readonly Dictionary<Guid, ToneChannel> _lastChannels = [];
     private readonly TextBlock _total = Studio.Label("", 11, "#b5b5b5");
     private readonly StudioButton _previewButton;
+    private readonly TextBlock _previewLabel = Studio.Label("", 11);
     private readonly CheckBox _monochrome = new() { Content = "Monochrome", FontSize = 12, MinHeight = 28 };
     private EditorSession? _session;
     private Guid _layerId;
@@ -82,7 +83,8 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
         _body.Children.Add(Studio.Row(presets, reset));
         _previewButton = new StudioButton("Color adjustment preview", TogglePreview)
         {
-            HorizontalAlignment = HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = _previewLabel
         };
         _body.Children.Add(_previewButton);
         Unloaded += (_, _) => CancelGesture();
@@ -154,8 +156,11 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
                 _parameters[1].Value = layer.Exposure.Offset;
                 _parameters[2].Value = layer.Exposure.Gamma;
             }
-            _previewButton.SetLabel(layer.Visible ? "Preview ✓" : "Preview off");
-            _previewButton.SetName("Color adjustment preview");
+            // Keep the semantic automation/tooltip identity fixed. SetLabel followed
+            // by SetName previously wrote both twice on every unrelated selection.
+            var previewText = layer.Visible ? "Preview ✓" : "Preview off";
+            if (_previewLabel.Text != previewText)
+                _previewLabel.Text = previewText;
         }
         finally { _refreshing = false; }
     }
