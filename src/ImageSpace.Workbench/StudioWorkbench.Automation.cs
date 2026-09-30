@@ -129,11 +129,14 @@ public sealed partial class StudioWorkbench
             {
                 var visited = new HashSet<DependencyObject>();
                 var viewport = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
-                Visit(root, viewport);
+                // Inspect popup roots first so controls hosted by the popup layer
+                // are not misclassified during the subsequent workspace traversal.
+                // Scope is observation only: callers still use real pointer input.
                 foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
-                    if (popup.Child is { } child)
-                        Visit(child, viewport);
-                void Visit(DependencyObject element, Rect clip)
+                    if (popup.IsOpen && popup.Child is { } child)
+                        Visit(child, viewport, "popup");
+                Visit(root, viewport, "workspace");
+                void Visit(DependencyObject element, Rect clip, string scope)
                 {
                     if (!visited.Add(element) || visited.Count > 15000)
                         return;
@@ -163,6 +166,7 @@ public sealed partial class StudioWorkbench
                                 json.WriteStartObject();
                                 json.WriteString("name", name);
                                 json.WriteString("type", view.GetType().Name);
+                                json.WriteString("scope", scope);
                                 json.WriteNumber("x", visible.X);
                                 json.WriteNumber("y", visible.Y);
                                 json.WriteNumber("width", visible.Width);
@@ -176,7 +180,7 @@ public sealed partial class StudioWorkbench
                         catch (ArgumentException) { return; }
                     }
                     for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
-                        Visit(VisualTreeHelper.GetChild(element, i), clip);
+                        Visit(VisualTreeHelper.GetChild(element, i), clip, scope);
                 }
             }
             json.WriteEndArray();

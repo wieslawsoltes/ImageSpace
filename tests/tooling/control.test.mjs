@@ -54,3 +54,41 @@ test('invalid arguments fail without evaluating the browser',async()=>{
   for(const [name,timeout] of [['',20],['Target',0],['Target',Infinity]])
     await assert.rejects(waitForControl(p,name,timeout),TypeError);
 });
+
+test('popup scope selects the menu command even when a same-named toolbar appears first',async()=>{
+  const duplicate=()=>[
+    {...snapshot(10)[0],scope:'workspace'},
+    {...snapshot(50)[0],scope:'popup'}
+  ];
+  const p=page([], [duplicate(),duplicate()]);
+  const found=await waitForControl(p,'Target',1000,'popup');
+  assert.equal(found.x,50);assert.equal(found.scope,'popup');
+});
+test('workspace scope remains explicit while an identically named popup is open',async()=>{
+  const duplicate=()=>[
+    {...snapshot(50)[0],scope:'popup'},
+    {...snapshot(10)[0],scope:'workspace'}
+  ];
+  const p=page([], [duplicate(),duplicate()]);
+  assert.equal((await waitForControl(p,'Target',1000,'workspace')).x,10);
+});
+test('missing or disabled popup command cannot fall back to a toolbar command',async()=>{
+  const publication=()=>[
+    {...snapshot(10)[0],scope:'workspace'},
+    {...snapshot(50,false)[0],scope:'popup'}
+  ];
+  const p=page([],Array.from({length:10},publication));
+  await assert.rejects(waitForControl(p,'Target',500,'popup'),/Target.*did not settle/);
+  assert.equal(p.frames(),5);
+});
+test('unscoped geometry stability cannot join workspace and popup observations',async()=>{
+  const scoped=scope=>snapshot().map(control=>({...control,scope}));
+  const p=page([],[scoped('workspace'),scoped('popup'),scoped('popup')]);
+  const found=await waitForControl(p,'Target',1000);
+  assert.equal(p.frames(),3);assert.equal(found.scope,'popup');
+});
+test('invalid scope is rejected before reading the browser',async()=>{
+  const p={evaluate:()=>assert.fail('Unexpected browser evaluation')};
+  for(const scope of ['',null,false,{},'menu'])
+    await assert.rejects(waitForControl(p,'Target',1000,scope),TypeError);
+});

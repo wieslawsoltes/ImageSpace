@@ -5,9 +5,9 @@ import { waitForControl } from './control.mjs';
 import { decodePng } from './png.mjs';
 
 const state = page => page.evaluate(() => globalThis.imageSpaceDiagnostics);
-const control = (page, name) => waitForControl(page, name);
-async function click(page, name) { const c = await control(page, name); await page.mouse.click(c.x + c.width / 2, c.y + c.height / 2); }
-async function menu(page, name, item) { await click(page, name); await click(page, item); }
+const control = (page, name, scope) => waitForControl(page, name, 20000, scope);
+async function click(page, name, scope) { const c = await control(page, name, scope); await page.mouse.click(c.x + c.width / 2, c.y + c.height / 2); }
+async function menu(page, name, item) { await click(page, name); await click(page, item, 'popup'); }
 async function number(page, name, value, read) {
   await click(page, name); await page.keyboard.press('Control+a'); await page.keyboard.insertText(String(value));
   await page.keyboard.press('Enter'); await expect.poll(async () => read(await state(page))).toBeCloseTo(value, 5);
@@ -117,12 +117,21 @@ test('selection-created adjustment masks and explicit clipping preserve unaffect
   await add(page, 'Exposure');
   expect((await state(page)).mask).toBe(true); expect((await state(page)).editMask).toBe(false);
   await number(page, 'Exposure EV', 1, s => s.exposureEV);
+  // Deselect also exists on the Marquee options bar behind the popup.
+  // Observe and click the menu-scoped item once, then require its actual effect.
+  const selected = await state(page);
   await menu(page, 'Select', 'Deselect');
+  await expect.poll(async () => (await state(page)).selection).toBe(false);
+  await expect.poll(async () => (await state(page)).history).toBe(selected.history + 1);
   const inside = await world(page, 250, 300), outside = await world(page, 700, 300);
   await page.mouse.move(10, 10);
   await expectPixel(page, inside, exposure([54, 145, 230], 1)); await expectPixel(page, outside, [54, 145, 230]);
+  const beforeClip = await state(page);
+  expect(beforeClip.canCreateClippingMask).toBe(true);
   await menu(page, 'Layer', 'Create Clipping Mask');
   await expect.poll(async () => (await state(page)).activeClipped).toBe(true);
+  await expect.poll(async () => (await state(page)).history).toBe(beforeClip.history + 1);
+  expect((await state(page)).maskRevision).toBe(beforeClip.maskRevision);
   await page.mouse.move(10, 10);
   await expectPixel(page, inside, exposure([54, 145, 230], 1)); await expectPixel(page, outside, [54, 145, 230]);
   await capture(page, 'masked-exposure');
