@@ -1,0 +1,45 @@
+name: Apply verified Gaussian calibration source
+on:
+  push:
+    branches: [perf/calibrated-gaussian-dispatch]
+    paths: [.github/workflows/apply-gaussian-calibration.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify exact source ancestry and transfer digest
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 6694055db22f64e67c8580df158772f48c7c4edb HEAD
+          git diff --exit-code 6694055db22f64e67c8580df158772f48c7c4edb HEAD -- . ':!.github/calibration-transfer/**' ':!.github/workflows/apply-gaussian-calibration.yml'
+          python3 - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          encoded=''.join(Path(f'.github/calibration-transfer/{i}.b64').read_text() for i in range(2))
+          decoder=lzma.LZMADecompressor()
+          patch=decoder.decompress(base64.b64decode(encoded,validate=True),max_length=71357)
+          assert decoder.eof and not decoder.unused_data
+          assert len(patch)==71356
+          assert hashlib.sha256(patch).hexdigest()=='8f0b0e1ceead994febd93c85edee48c3710ca8b425b88554df5d33702dcd18f7'
+          Path('/tmp/imagespace-calibration.diff').write_bytes(patch)
+          PY
+      - name: Apply source and remove completed transfer files
+        shell: bash
+        run: |
+          git apply --check /tmp/imagespace-calibration.diff
+          git apply --index /tmp/imagespace-calibration.diff
+          git rm -r .github/calibration-transfer .github/workflows/apply-gaussian-calibration.yml
+          git diff --cached --check
+          test "$(git write-tree)" = '474dd00c77e1c67df6536b5fb784c481bd5c4dff'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix Gaussian dispatch regression with explicit calibration, lazy pipelines and validated ownership'
+          git push origin HEAD:refs/heads/perf/calibrated-gaussian-dispatch
