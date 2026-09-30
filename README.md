@@ -21,9 +21,15 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.5.0-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.5.1-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
+
+## New in 0.5.1
+
+Gaussian automatic dispatch retains the direct shader until an explicit, same-session calibration demonstrates a materially faster, byte-identical tiled result. This replaces an area/radius heuristic that regressed software-adapter performance. Tiled pipelines compile lazily; ordinary selection and filter preview do not initiate benchmarking. [Read the actual measurements and calibration contract](docs/tiled-gaussian.md).
+
+**Reuse preparation without reusing stale pixels.** Each GPU session caches up to eight execution plans and eight Gaussian coefficient tables. Repeated recipes avoid rebuilding typed parameter blocks and kernel weights; parameter edits reuse unchanged coefficients. Calibration updates invalidate prepared routing decisions, and a source-image calibration never selects a kernel for a different intermediate input. The dispatcher still executes every requested filter and keeps final readback semantics unchanged. [Preparation cache contracts](docs/gpu-preparation-cache.md).
 
 ## New in 0.5
 

@@ -65,7 +65,7 @@ Build the standalone browser package with:
 
 ```sh
 npm run pack:webgpu
-npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.5.0-alpha.1.tgz
+npm install ./artifacts/packages/wieslawsoltes-imagespace-webgpu-0.5.1-alpha.1.tgz
 ```
 
 NuGet.org publication uses [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing): the tag-only `nuget` job in `release.yml` exchanges a GitHub OIDC token for a short-lived key in the protected `nuget` environment, so no NuGet API key is stored. npm publication of the WebGPU tarball still requires an `NPM_TOKEN` secret and runs only for tags. Signing/notarization is separate and must be configured for production native distribution.
@@ -77,3 +77,7 @@ Add deterministic regressions for fixed model/rendering defects. Keep document i
 ## UI responsiveness regressions
 
 See [UI responsiveness](ui-responsiveness.md) for retained inspector/row ownership, deferred preview caches, invalidation categories, and read-only performance counters. Browser validation includes warmed real-pointer selection, canvas no-op clicks, cursor/ants isolation, numeric edits after undo and tone/channel preview reuse.
+
+## GPU execution-policy validation
+
+Run `npm run test:browser-helpers` for deterministic preparation, profile, coefficient-byte and ownership contracts. These tests include descriptor/scheduling doubles; they do not execute WGSL. `npx playwright test --config playwright.gpu.config.mjs` requires a real WebGPU adapter and tests the shipped shaders, calibration and cache behavior. The Build and Resident GPU workflows run dependency-free contracts early and retain `browser-contracts.tap`. Full Uno/browser and physical-device validation remain distinct. See [GPU preparation cache](gpu-preparation-cache.md).

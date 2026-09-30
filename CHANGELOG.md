@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1-alpha.1 — Unreleased
+
+- Removed automatic tiled blur based solely on image area/radius after CI measurements showed a substantial SwiftShader slowdown despite byte-identical output and fewer algorithmic input reads.
+- Untuned `auto` now retains direct execution. Explicit per-session Gaussian calibration requires identical RGBA output, a 1.15× median improvement and consistent paired wins before selecting tiled.
+- Added preserved-result calibration, cancellation, bounded immutable profiles, concurrent cache reuse, force/recheck and invalidation APIs without new source uploads or a separate backup buffer.
+- Added bounded per-session execution-plan and Gaussian coefficient caches; warmed recipes reuse private parameter templates without reusing stale output pixels.
+- Restricted calibrated automatic decisions to the exact source-image workload and invalidate prepared plans on profile updates or clearing.
+- Added parameter-byte, eviction, ownership and profile-invalidation contracts plus real-WebGPU cache scenarios and early CI contract execution.
+- Deferred tiled shader compilation until explicit use or calibration; capability reporting counts initialized pipelines.
+- Added deterministic scheduling/policy regressions and real-GPU tests for conservative defaults, lazy compilation, profile reuse and source/ping/pong preservation. The WGSL kernels themselves are unchanged.
+- This section describes source changes; local contract checks and historical CI results are not a claim that the new GPU tests or public deployment have passed.
+
 ## 0.5.0-alpha.1 — 2026-09-29
 
 - Added editable contiguous clipping-mask chains, base-alpha-preserving Skia/SkSL compositing for all sixteen supported blend modes, clipped adjustment scopes and one-time base opacity/blending.
