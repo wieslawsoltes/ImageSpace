@@ -62,6 +62,8 @@ Export uses a separate Skia raster surface. It cannot directly reuse an arbitrar
 
 ## WebGPU compute
 
+Automatic Gaussian execution uses the direct path unless an explicit session calibration supports tiled execution. Tiled pipeline compilation is lazy; calibration is not initiated by gallery or selection interactions. See [measured dispatch policy](tiled-gaussian.md).
+
 The standalone engine compiles five pipelines implementing thirteen RGBA8 filters: color/convolution, fused color stacks, Gaussian horizontal, Gaussian vertical and block-reduced Pixelate. Seeded Noise retains the established CPU sequence. See [Filter Gallery](filter-gallery.md) for the complete backend and UI contracts.
 
 Resident sessions capture an immutable source, allocate two RGBA ping-pong buffers, an aligned parameter arena and readback storage, and allocate premultiplied float blur scratch only when needed. Bind groups and pipelines are reused. Each evaluation resets to the original source; intermediate filter stages never cross back to CPU. Explicit execute/read/apply methods separate computation from optional output readback. Reading adds a separate copy/map submission.
@@ -89,3 +91,7 @@ The Uno host chooses its graphics backend and may fall back to software. CI vali
 The workspace uses original Skia-drawn icons, custom button templates, custom menu popups, numeric editors, layer thumbnails, spectrum and histogram controls. Standard Uno primitives provide layout, focus, text input, scrolling, check boxes and dialog lifecycle. This is custom application chrome, not a reimplementation of the operating system's accessibility and text-input machinery.
 
 The visual hierarchy follows public Photoshop workspace conventions. It does not include Adobe assets or claim pixel-identical cross-platform rendering. Reference: https://helpx.adobe.com/photoshop/desktop/get-started/learn-the-basics/workspace-overview.html
+
+### Bounded GPU preparation
+
+Resident sessions retain at most eight execution plans and eight Gaussian coefficient tables, separate from image buffers. Plans capture private uniform bytes, ping/pong routing and shader selections. Reusing a plan never skips execution or returns cached output. Calibrated automatic routes apply only to original-source Gaussian inputs and invalidate plans when updated. [Preparation and lifetime contract](gpu-preparation-cache.md).

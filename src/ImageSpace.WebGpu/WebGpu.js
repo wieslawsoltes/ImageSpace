@@ -185,6 +185,41 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
   if (total.w>0u) { value=pack(vec4f(vec3f(total.xyz)/f32(total.w),f32(total.w)/f32(count))); }
   for (var n=lane;n<count;n+=64u) { output[(top+n/width)*p.width+left+n%width]=value; }
 }`;
+  const shaderSources = Object.freeze({ point: pointCode, fused: fusedCode,
+    horizontal: horizontalCode, vertical: verticalCode, pixelate: pixelateCode,
+    tiledHorizontal: tiledHorizontalCode, tiledVertical: tiledVerticalCode });
+
+  async function preparePipeline(runtime, name) {
+    if (runtime.pipelines[name]) return;
+    const module = runtime.device.createShaderModule({ label: 'ImageSpace ' + name, code: shaderSources[name] });
+    const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error');
+    if (errors.length) throw new Error(errors.map(e => `${name} ${e.lineNum}:${e.linePos} ${e.message}`).join('\n'));
+    runtime.pipelines[name] = await runtime.device.createComputePipelineAsync({
+      label: 'ImageSpace ' + name, layout: runtime.pipelineLayout, compute: { module, entryPoint: 'main' }
+    });
+  }
+
+  function gaussianSigma(amount) {
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000)
+      throw new RangeError('Gaussian calibration requires a finite positive amount at most 1000000.');
+    return Math.max(.1, Math.min(32, amount));
+  }
+
+  function calibrationOptions(options) {
+    if (!options || typeof options !== 'object' || Array.isArray(options))
+      throw new TypeError('Expected Gaussian calibration options.');
+    const samples = options.samples ?? 5, warmups = options.warmups ?? 1;
+    if (!Number.isInteger(samples) || samples < 3 || samples > 9 || samples % 2 !== 1 ||
+        !Number.isInteger(warmups) || warmups < 1 || warmups > 3)
+      throw new RangeError('Calibration requires 3, 5, 7 or 9 samples and 1–3 warmups.');
+    if (options.force !== undefined && typeof options.force !== 'boolean')
+      throw new TypeError('force must be a boolean.');
+    const signal = options.signal;
+    if (signal !== undefined && (!signal || typeof signal.aborted !== 'boolean' ||
+        typeof signal.addEventListener !== 'function')) throw new TypeError('signal must be an AbortSignal.');
+    return { samples, warmups, force: options.force === true, signal };
+  }
+
   async function scoped(device, action) {
     device.pushErrorScope('validation'); device.pushErrorScope('out-of-memory'); device.pushErrorScope('internal');
     let result, failure;
@@ -213,14 +248,12 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
             { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 816 } }
           ] });
           const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
-          const pipelines = {};
-          for (const [name, code] of Object.entries({ point: pointCode, fused: fusedCode, horizontal: horizontalCode, vertical: verticalCode, tiledHorizontal: tiledHorizontalCode, tiledVertical: tiledVerticalCode, pixelate: pixelateCode })) {
-            const module = device.createShaderModule({ label: 'ImageSpace ' + name, code });
-            const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error');
-            if (errors.length) throw new Error(errors.map(e => `${name} ${e.lineNum}:${e.linePos} ${e.message}`).join('\n'));
-            pipelines[name] = await device.createComputePipelineAsync({ label: 'ImageSpace ' + name, layout: pipelineLayout, compute: { module, entryPoint: 'main' } });
-          }
-          return { device, layout, pipelines, generation: ++generation };
+          const runtime = { device, layout, pipelineLayout, pipelines: {}, generation: ++generation };
+          // Color/direct processing must not pay for workgroup-tile shader compilation.
+          // Optional tiled pipelines are compiled on first explicit use or calibration.
+          for (const name of ['point', 'fused', 'horizontal', 'vertical', 'pixelate'])
+            await preparePipeline(runtime, name);
+          return runtime;
         });
       } catch (error) { device.destroy(); throw error; }
       current = next;
@@ -268,9 +301,14 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       const stride = Math.ceil(816 / device.limits.minUniformBufferOffsetAlignment) * device.limits.minUniformBufferOffsetAlignment;
       const fixedBytes = length * 4 + stride * 16;
       if (length > device.limits.maxStorageBufferBindingSize || length > device.limits.maxBufferSize || reserved + fixedBytes > budget) return null;
-      const resources = [], bindings = new Map();
+      const resources = [], bindings = new Map(), calibrations = new Map();
+      // Bounded host-side preparation caches. They do not hold output pixels or
+      // bypass queue execution; every evaluation still starts from immutable source.
+      const executionPlans = new Map(), gaussianWeights = new Map();
+      const maximumCachedPlans = 8, maximumCachedWeights = 8;
+      let cachedParameterBytes = 0;
       let closed = false, scratch = null, last = null, owned = 0;
-      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0, logicalOperations: 0, fusedPasses: 0, parameterBytesUploaded: 0, tiledGaussianPasses: 0, directGaussianPasses: 0, gaussianInputReads: 0 };
+      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0, logicalOperations: 0, fusedPasses: 0, parameterBytesUploaded: 0, tiledGaussianPasses: 0, directGaussianPasses: 0, gaussianInputReads: 0, gaussianCalibrations: 0, gaussianCalibrationHits: 0, executionPlanBuilds: 0, executionPlanHits: 0, gaussianWeightBuilds: 0, gaussianWeightHits: 0 };
       const allocate = (size, usage, label) => {
         if (reserved + size > budget || size > device.limits.maxBufferSize) throw new RangeError('Resident GPU memory budget exceeded.');
         const buffer = device.createBuffer({ size, usage, label: 'ImageSpace ' + label });
@@ -284,11 +322,15 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       const ensure = () => {
         if (closed || current !== runtime) throw new Error('The resident filter session is disposed or its GPU device was lost.');
       };
+      const clearExecutionPlans = () => {
+        executionPlans.clear(); cachedParameterBytes = 0;
+      };
       const dispose = () => {
         if (closed) return;
         closed = true;
         for (const buffer of resources) buffer.destroy();
-        reserved -= owned; owned = 0; resources.length = 0; bindings.clear(); sessions.delete(api);
+        reserved -= owned; owned = 0; resources.length = 0; bindings.clear(); calibrations.clear(); sessions.delete(api); last = null;
+        clearExecutionPlans(); gaussianWeights.clear();
       };
       const readOutput = async () => {
         ensure();
@@ -306,12 +348,44 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           return result;
         } finally { clearTimeout(timer); if (!closed) readback.unmap(); }
       };
-      const dispatch = operations => {
+      // Calibration compares a Gaussian applied to this session's original pixels.
+      // A Gaussian after another stage has a different input: do not extrapolate a
+      // measured equivalence/timing profile to that uncalibrated workload.
+      const strategyFor = (sigma, originalSource = true) => blurStrategy === 'auto'
+        ? (originalSource ? calibrations.get(sigma)?.selected ?? 'direct' : 'direct') : blurStrategy;
+      const weightsFor = sigma => {
+        const cached = gaussianWeights.get(sigma);
+        if (cached) {
+          gaussianWeights.delete(sigma); gaussianWeights.set(sigma, cached);
+          stats.gaussianWeightHits++;
+          return cached;
+        }
+        const radius = Math.ceil(sigma * 3), values = [];
+        let total = 0;
+        for (let i = -radius; i <= radius; i++) {
+          const value = Math.exp(-i * i / (2 * sigma * sigma));
+          values.push(value); total += value;
+        }
+        // Normalize in double, round to float once exactly as the uncached writer.
+        const coefficients = Float32Array.from(values, value => value / total);
+        const result = { radius, coefficients };
+        if (gaussianWeights.size >= maximumCachedWeights)
+          gaussianWeights.delete(gaussianWeights.keys().next().value);
+        gaussianWeights.set(sigma, result); stats.gaussianWeightBuilds++;
+        return result;
+      };
+      const prepareTiled = async () => {
+        await preparePipeline(runtime, 'tiledHorizontal');
+        await preparePipeline(runtime, 'tiledVertical');
         ensure();
-        if (operations.some(op => !kinds.has(op.kind))) throw new Error('Unsupported filter in the resident stack.');
-        if (operations.some(op => op.kind === 'GaussianBlur') && !scratch) {
-          if (length * 4 > device.limits.maxStorageBufferBindingSize) throw new RangeError('Blur scratch exceeds the adapter storage-binding limit.');
-          scratch = allocate(length * 4, GPUBufferUsage.STORAGE, 'premultiplied blur scratch');
+      };
+      const prepareExecutionPlan = (operations, gaussianOverride) => {
+        const key = JSON.stringify([gaussianOverride ?? null, operations]);
+        const cached = executionPlans.get(key);
+        if (cached) {
+          executionPlans.delete(key); executionPlans.set(key, cached);
+          stats.executionPlanHits++;
+          return cached;
         }
         parameterBytes.fill(0);
         const plan = [];
@@ -336,25 +410,42 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
             }
             plan.push({ name: 'fused', input, output, slot });
           } else if (op.kind === 'GaussianBlur') {
-            const sigma = Math.max(.1, Math.min(32, op.amount)), radius = Math.ceil(sigma * 3);
-            integers[3] = radius;
-            let total = 0; const weights = [];
-            for (let i = -radius; i <= radius; i++) { const w = Math.exp(-i * i / (2 * sigma * sigma)); weights.push(w); total += w; }
-            weights.forEach((w, i) => { floats[8 + i] = w / total; });
-            // Tiny images/small radii avoid barrier and redundant halo overhead.
-            // Auto is a conservative heuristic, not hardware-specific autotuning.
-            const tiled = blurStrategy === 'tiled' ||
-              (blurStrategy === 'auto' && radius >= 6 && width * height >= 4096);
+            const sigma = Math.max(.1, Math.min(32, op.amount));
+            const { radius, coefficients } = weightsFor(sigma);
+            integers[3] = radius; floats.set(coefficients, 8);
+            // A lower shader-load count is not proof of lower latency. Untuned
+            // automatic sessions retain the direct reference on EVERY adapter.
+            const tiled = (gaussianOverride ?? strategyFor(sigma, input === source)) === 'tiled';
             plan.push({ name: tiled ? 'tiledHorizontal' : 'horizontal', input, output: scratch, slot, radius });
             plan.push({ name: tiled ? 'tiledVertical' : 'vertical', input: scratch, output, slot, radius });
           } else plan.push({ name: op.kind === 'Pixelate' ? 'pixelate' : 'point', input, output, slot, size: integers[6] });
           input = output; slot++; index = end;
         }
-        if (!plan.length) { last = source; return; }
-        device.queue.writeBuffer(uniforms, 0, parameters, 0, slot * stride);
-        stats.parameterBytesUploaded += slot * stride;
+        // GPUQueue.writeBuffer snapshots these bytes at call time. Keep one private
+        // template per plan instead of allocating descriptors/coefficients every run.
+        const entry = { plan, output: input, parameters: parameterBytes.slice(0, slot * stride) };
+        if (executionPlans.size >= maximumCachedPlans) {
+          const oldest = executionPlans.keys().next().value;
+          cachedParameterBytes -= executionPlans.get(oldest).parameters.byteLength;
+          executionPlans.delete(oldest);
+        }
+        executionPlans.set(key, entry); cachedParameterBytes += entry.parameters.byteLength;
+        stats.executionPlanBuilds++;
+        return entry;
+      };
+      const dispatch = (operations, gaussianOverride) => {
+        ensure();
+        if (operations.some(op => !kinds.has(op.kind))) throw new Error('Unsupported filter in the resident stack.');
+        if (operations.some(op => op.kind === 'GaussianBlur') && !scratch) {
+          if (length * 4 > device.limits.maxStorageBufferBindingSize) throw new RangeError('Blur scratch exceeds the adapter storage-binding limit.');
+          scratch = allocate(length * 4, GPUBufferUsage.STORAGE, 'premultiplied blur scratch');
+        }
+        if (!operations.length) { last = source; return; }
+        const cached = prepareExecutionPlan(operations, gaussianOverride);
+        device.queue.writeBuffer(uniforms, 0, cached.parameters);
+        stats.parameterBytesUploaded += cached.parameters.byteLength;
         const encoder = device.createCommandEncoder({ label: 'ImageSpace resident filter stack' });
-        for (const op of plan) {
+        for (const op of cached.plan) {
           const key = resources.indexOf(op.input) + ':' + resources.indexOf(op.output);
           let binding = bindings.get(key);
           if (!binding) {
@@ -386,24 +477,129 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           pass.end(); stats.dispatches++;
           if (op.name === 'fused') stats.fusedPasses++;
         }
-        device.queue.submit([encoder.finish()]); stats.submissions++; stats.logicalOperations += operations.length; last = input;
+        device.queue.submit([encoder.finish()]); stats.submissions++; stats.logicalOperations += operations.length; last = cached.output;
       };
       const run = (operations, read) => {
         const captured = normalize(operations);
         return exclusive(async () => {
           ensure();
-          try { return await scoped(device, async () => { dispatch(captured); return read ? await readOutput() : undefined; }); }
+          try {
+            return await scoped(device, async () => {
+              if (captured.some((op, index) => op.kind === 'GaussianBlur' && strategyFor(gaussianSigma(op.amount), index === 0) === 'tiled'))
+                await prepareTiled();
+              dispatch(captured);
+              return read ? await readOutput() : undefined;
+            });
+          }
           catch (error) { dispose(); throw error; }
+        });
+      };
+      const calibrateGaussian = (amount, options = {}) => {
+        const sigma = gaussianSigma(amount);
+        const { samples, warmups, force, signal } = calibrationOptions(options);
+        const check = () => {
+          ensure();
+          if (signal?.aborted) throw new DOMException('Gaussian calibration was cancelled.', 'AbortError');
+        };
+        return exclusive(async () => {
+          check();
+          const cached = calibrations.get(sigma);
+          if (cached && !force) { stats.gaussianCalibrationHits++; return cached; }
+          let preserved = last;
+          try {
+            return await scoped(device, async () => {
+              await prepareTiled();
+              check();
+              // A single Gaussian always targets ping[0]. Protect the currently
+              // published result using the already-owned, otherwise unused ping[1].
+              // Calibration neither uploads source again nor allocates a backup.
+              if (last === ping[0]) {
+                const encoder = device.createCommandEncoder({ label: 'ImageSpace preserve calibration output' });
+                encoder.copyBufferToBuffer(ping[0], 0, ping[1], 0, length);
+                device.queue.submit([encoder.finish()]); stats.submissions++;
+                preserved = ping[1];
+              }
+              const recipe = [{ kind: 'GaussianBlur', amount: sigma, secondary: 0, enabled: true }];
+              const complete = async () => {
+                let timeout;
+                try {
+                  await Promise.race([device.queue.onSubmittedWorkDone(), new Promise((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error('Gaussian calibration timed out.')), 30000);
+                  })]);
+                  check();
+                } finally { clearTimeout(timeout); }
+              };
+              // Compare actual output before allowing the alternative path. Readback
+              // costs are excluded from the timing samples, but counted honestly.
+              dispatch(recipe, 'direct');
+              const reference = await readOutput(); check();
+              dispatch(recipe, 'tiled');
+              const candidate = await readOutput(); check();
+              let maximumByteDifference = 0;
+              for (let i = 0; i < length; i++)
+                maximumByteDifference = Math.max(maximumByteDifference, Math.abs(reference[i] - candidate[i]));
+              for (let i = 0; i < warmups; i++) {
+                dispatch(recipe, 'direct'); await complete();
+                dispatch(recipe, 'tiled'); await complete();
+              }
+              const directMilliseconds = [], tiledMilliseconds = [];
+              const measure = async (mode, times) => {
+                check();
+                const started = performance.now();
+                dispatch(recipe, mode); await complete();
+                times.push(performance.now() - started);
+              };
+              for (let i = 0; i < samples; i++) {
+                if (i % 2 === 0) {
+                  await measure('direct', directMilliseconds); await measure('tiled', tiledMilliseconds);
+                } else {
+                  await measure('tiled', tiledMilliseconds); await measure('direct', directMilliseconds);
+                }
+              }
+              check();
+              const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+              const directMedian = median(directMilliseconds), tiledMedian = median(tiledMilliseconds);
+              const minimumSpeedup = 1.15;
+              const tiledWins = tiledMilliseconds.filter((time, i) => time < directMilliseconds[i]).length;
+              const equivalent = maximumByteDifference === 0;
+              const faster = directMedian > 0 && tiledMedian > 0 &&
+                directMedian / tiledMedian >= minimumSpeedup && tiledWins >= Math.ceil(samples * .7);
+              const report = Object.freeze({ width, height, sigma, generation: runtime.generation,
+                selected: equivalent && faster ? 'tiled' : 'direct', equivalent, maximumByteDifference,
+                minimumSpeedup, tiledWins, samples, warmups, directMedian, tiledMedian,
+                directMilliseconds: Object.freeze(directMilliseconds), tiledMilliseconds: Object.freeze(tiledMilliseconds),
+                scope: 'Same-session warm queue-completion wall time: parameter upload, command encoding and GPU completion. Excludes shader compilation and correctness readback; not timestamp-query GPU time.' });
+              // Bound profile storage; source dimensions and device generation belong
+              // to this session. A different sigma starts on direct until calibrated.
+              if (calibrations.has(sigma)) calibrations.delete(sigma);
+              if (calibrations.size >= 8) calibrations.delete(calibrations.keys().next().value);
+              calibrations.set(sigma, report); stats.gaussianCalibrations++;
+              // Plan strategy is frozen at preparation. Invalidate cached decisions
+              // whenever profiles change, including forced rechecks and evictions.
+              clearExecutionPlans();
+              return report;
+            });
+          } catch (error) {
+            // Cancellation cannot preempt submitted work. The next queued operation
+            // remains ordered behind it and observes only the preserved prior result.
+            if (error?.name !== 'AbortError') dispose();
+            throw error;
+          } finally { if (!closed) last = preserved; }
         });
       };
       const api = Object.freeze({
         width, height, generation: runtime.generation,
+        calibrateGaussian,
+        gaussianCalibration: amount => { ensure(); return calibrations.get(gaussianSigma(amount)) ?? null; },
+        clearGaussianCalibrations: () => exclusive(() => { ensure(); calibrations.clear(); clearExecutionPlans(); }),
         apply: operations => run(operations, true), execute: operations => run(operations, false),
         read: () => exclusive(async () => {
           ensure();
           try { return await scoped(device, readOutput); } catch (error) { dispose(); throw error; }
         }),
-        statistics: () => ({ ...stats, residentBytes: owned, disposed: closed }), dispose
+        statistics: () => ({ ...stats, residentBytes: owned, disposed: closed,
+          executionPlansCached: executionPlans.size, gaussianWeightsCached: gaussianWeights.size,
+          cachedParameterBytes }), dispose
       });
       try {
         await scoped(device, () => {
@@ -438,8 +634,8 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
     apply: (bytes, width, height, kind, amount = 0, secondary = 0) => applyChain(bytes, width, height, [{ kind, amount, secondary }]),
     supports: kind => kinds.has(kind),
     describe: () => ({ available: !!current, backend: description, maximumBufferSize: current?.device.limits.maxBufferSize ?? 0,
-      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? 7 : 0 }),
-    shaderSource: pointCode,
+      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? Object.keys(current.pipelines).length : 0 }),
+    shaderSource: pointCode, shaderSources,
     createHandle: async (base64, width, height) => {
       const session = await createSession(from64(base64), width, height);
       if (!session) return '';

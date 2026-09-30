@@ -22,6 +22,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Browser host and GPU preparation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          node --test tests/tooling/*.test.mjs | tee artifacts/browser-contracts.tap
       - name: Engine, formats, filter stacks and compositor tests
         run: |
           dotnet run --project tests/ImageSpace.Tests -c Release
@@ -86,6 +92,7 @@ jobs:
             artifacts/*filter-fixtures.json
             artifacts/filter-stack-fixtures.json
             artifacts/validation-summary.json
+            artifacts/browser-contracts.tap
             artifacts/browser-tests
             artifacts/screenshots
           if-no-files-found: warn

@@ -16,7 +16,15 @@ await writeFile(new URL('index.d.ts',dist),`export type FilterKind='Invert'|'Gra
 export interface FilterOperation {readonly kind:FilterKind;readonly amount?:number;readonly secondary?:number;readonly enabled?:boolean;}
 export interface Capabilities {available:boolean;backend:string;maximumBufferSize:number;residentBytes:number;residentBudgetBytes:number;liveSessions:number;pipelineCount:number;}
 export interface SessionOptions {readonly fuseColorOperations?:boolean;readonly gaussianBlur?:'auto'|'direct'|'tiled';}
-export interface SessionStatistics {tiledGaussianPasses:number;directGaussianPasses:number;gaussianInputReads:number;logicalOperations:number;fusedPasses:number;parameterBytesUploaded:number;sourceUploads:number;uploadedBytes:number;submissions:number;dispatches:number;readbacks:number;bufferAllocations:number;bindGroupBuilds:number;residentBytes:number;disposed:boolean;}
+export interface SessionStatistics {executionPlanBuilds:number;executionPlanHits:number;gaussianWeightBuilds:number;gaussianWeightHits:number;executionPlansCached:number;gaussianWeightsCached:number;cachedParameterBytes:number;gaussianCalibrations:number;gaussianCalibrationHits:number;tiledGaussianPasses:number;directGaussianPasses:number;gaussianInputReads:number;logicalOperations:number;fusedPasses:number;parameterBytesUploaded:number;sourceUploads:number;uploadedBytes:number;submissions:number;dispatches:number;readbacks:number;bufferAllocations:number;bindGroupBuilds:number;residentBytes:number;disposed:boolean;}
+export interface GaussianCalibrationOptions {readonly samples?:3|5|7|9;readonly warmups?:1|2|3;readonly force?:boolean;readonly signal?:AbortSignal;}
+export interface GaussianCalibration {
+  readonly width:number;readonly height:number;readonly sigma:number;readonly generation:number;
+  readonly selected:'direct'|'tiled';readonly equivalent:boolean;readonly maximumByteDifference:number;
+  readonly minimumSpeedup:number;readonly tiledWins:number;readonly samples:number;readonly warmups:number;
+  readonly directMedian:number;readonly tiledMedian:number;
+  readonly directMilliseconds:readonly number[];readonly tiledMilliseconds:readonly number[];readonly scope:string;
+}
 export interface FilterSession {
   readonly width:number;readonly height:number;readonly generation:number;
   /** Restarts from the captured immutable source and reads the final RGBA8 output once. */
@@ -24,6 +32,10 @@ export interface FilterSession {
   /** Restarts from the captured immutable source; leaves the final output on the GPU. */
   execute(operations:readonly FilterOperation[]):Promise<void>;
   read():Promise<Uint8Array>;
+  /** Explicitly benchmark both paths; preserves current output. Never called automatically. */
+  calibrateGaussian(amount:number,options?:GaussianCalibrationOptions):Promise<GaussianCalibration>;
+  gaussianCalibration(amount:number):GaussianCalibration|null;
+  clearGaussianCalibrations():Promise<void>;
   statistics():SessionStatistics;
   dispose():void;
 }

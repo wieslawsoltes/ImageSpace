@@ -24,6 +24,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Browser host and GPU preparation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          node --test tests/tooling/*.test.mjs | tee artifacts/browser-contracts.tap
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Validate real WGSL kernels and resident lifecycle
@@ -34,5 +40,6 @@ jobs:
           name: ImageSpace-resident-gpu-validation
           path: |
             artifacts/resident-gpu*.json
+            artifacts/browser-contracts.tap
             artifacts/filter-stack*.json
             artifacts/transparent-filter-fixtures.json

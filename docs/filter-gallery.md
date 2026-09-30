@@ -46,7 +46,9 @@ await editorSession.ApplyFilterStackAsync(
 
 ## Resident WebGPU execution
 
-The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. Seven pipelines implement these thirteen operations: combined color/convolution, fused color stacks, direct Gaussian horizontal/vertical, tiled Gaussian horizontal/vertical, and block-reduced Pixelate. See [tiled Gaussian execution](tiled-gaussian.md) for the direct/auto/tiled strategy and workgroup storage contract.
+Automatic Gaussian execution uses the direct path unless an explicit session calibration supports tiled execution. Tiled pipeline compilation is lazy; calibration is not initiated by gallery or selection interactions. See [measured dispatch policy](tiled-gaussian.md).
+
+The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. Five pipelines initialize normally: combined color/convolution, fused color stacks, direct Gaussian horizontal/vertical and block-reduced Pixelate. Two additional tiled Gaussian pipelines compile on demand. See [tiled Gaussian execution](tiled-gaussian.md) for strategy and workgroup-storage contracts.
 
 A session uploads its source once and retains two RGBA ping-pong buffers, readback storage and an aligned uniform arena. Blur's premultiplied float scratch is created only when first needed. Bind groups are cached by input/output pairing. Ordered operations dispatch against these buffers, never reading intermediate stage pixels back to C# or JavaScript. Reading the final output uses a separate copy/readback submission. Repeated preview evaluations reuse the same buffers and original source.
 
@@ -74,3 +76,7 @@ Reports include `filter-stack-tests.json`, `filter-stack-fixtures.json`, `gaussi
 ## Remaining boundaries
 
 This increment does not add layer folder groups, non-default clipping-group options, smart objects, high-bit/CMYK/ICC editing, advanced type/paths/styles/warps/healing, PSB, Photoshop plug-ins/timeline/actions or lossless Photoshop metadata roundtrips. The gallery uses original Uno controls and public workspace conventions, not Adobe artwork or private APIs. Full Photoshop feature/UI parity is not claimed.
+
+### Preview preparation reuse
+
+The resident backend now reuses bounded execution-plan metadata and Gaussian coefficients during repeat evaluations and parameter edits. It does not initiate calibration when opening the gallery, selecting layers or moving a parameter. Untuned automatic Gaussian execution remains direct. The before/after preview, selection-limited final commit and history semantics are unchanged. See [GPU preparation cache](gpu-preparation-cache.md).

@@ -26,7 +26,7 @@ async function capture() {
   };
   runInNewContext(source, context);
   await context.imageSpaceGpu.initialize();
-  return { shaders, engine: context.imageSpaceGpu };
+  return { shaders: new Map(Object.entries(context.imageSpaceGpu.shaderSources)), engine: context.imageSpaceGpu };
 }
 
 test('tiled shader declarations stay within core workgroup/storage budgets', async () => {

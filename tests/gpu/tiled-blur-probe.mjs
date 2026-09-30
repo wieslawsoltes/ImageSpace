@@ -55,7 +55,7 @@ export async function tiledBlurProbe() {
     } finally { direct?.dispose(); tiled?.dispose(); }
   }
   const automatic = [];
-  for (const [width, height, amount, expectedTiled] of [[63, 65, 2, false], [64, 64, 1, false], [64, 64, 2, true], [129, 65, 32, true]]) {
+  for (const [width, height, amount, expectedTiled] of [[63, 65, 2, false], [64, 64, 1, false], [64, 64, 2, false], [129, 65, 32, false]]) {
     const source = new Uint8Array(width * height * 4);
     let auto, direct;
     try {

@@ -71,10 +71,20 @@ Adjacent enabled color operations now share one WGSL dispatch. Each operation st
 
 The differential suite covers every ordered pair of color kernels, a sixteen-stage chain and mixed spatial chains, including hidden RGB and low-alpha inputs. The eight-stage benchmark compares two warmed resident sessions on the same adapter, retaining all timing samples and resource counters.
 
-## Workgroup-tiled Gaussian blur
+## Evidence-gated Gaussian execution
 
-`createSession` also accepts `{ gaussianBlur: 'auto' | 'direct' | 'tiled' }`. Auto chooses between the existing reference and cooperative tile shaders; forced modes support same-device profiling and differential checks. The operation remains a separable, clamped-edge, premultiplied Gaussian with unchanged sigma and output precision.
+`createSession` accepts `{ gaussianBlur: 'auto' | 'direct' | 'tiled' }`. **Auto now uses direct for every uncalibrated sigma**. The original area/radius heuristic was removed after real CI reports showed that tiled execution was slower on SwiftShader despite fewer algorithmic loads. The shader math is unchanged.
 
-Horizontal 32×4 workgroups cache packed pixels; vertical 4×32 workgroups cache the exact float intermediate. Their maximum shared-memory footprints are 3584 and 14,336 bytes. Halo/tail lanes participate in synchronization before leaving the kernel. Existing resident buffers and bind groups are reused, with no intermediate readback.
+Explicit `session.calibrateGaussian(sigma, { samples: 5, warmups: 1, signal })` compares real RGBA output and alternating queue-completion samples. It selects tiled only for byte-identical output, at least 1.15× median speedup, and at least 70% paired wins. It preserves the currently published result, reuses existing source/ping-pong resources, and never runs automatically during interactive work. The returned immutable profile is limited to this session and exact normalized sigma; at most eight are cached. `gaussianCalibration(sigma)` reads a profile; `clearGaussianCalibrations()` removes profiles. `force: true` explicitly repeats calibration.
 
-`statistics()` includes `tiledGaussianPasses`, `directGaussianPasses` and `gaussianInputReads`. The latter counts algorithmic shader-input accesses, including redundant halo loads—not physical DRAM traffic. Seven cached pipelines implement the same thirteen filters. Read [the strategy, safety and validation contract](../../docs/tiled-gaussian.md) before interpreting benchmark results.
+Five baseline pipelines initialize normally. The two tiled pipelines compile only when first forced or calibrated, bringing the actual initialized count to seven. Horizontal 32×4 tiles retain packed RGBA in 3584 bytes; vertical 4×32 tiles retain float data in 14,336 bytes. Counters report requested shader loads, pass counts, calibrations and cache hits—not physical GPU timing. The frozen `shaderSources` diagnostic map is readable without initialization.
+
+Read [the measurements, ownership and validation contract](../../docs/tiled-gaussian.md). Calibration has a real cost and should be an explicit profiling action, not a pointer-handler task. Software-adapter results do not certify hardware-GPU performance. New calibration tests need their own CI execution; previous tiled-kernel results are not substituted for them.
+
+## Bounded host preparation caches
+
+A resident session keeps up to eight least-recently-used execution plans and eight Gaussian coefficient tables. Repeating a recipe still dispatches the shaders, but reuses its private uniform template and routing descriptors. Editing a color operation after an unchanged Gaussian can reuse the coefficient table. Cached plans never contain output pixels, are never shared between sessions and are cleared on disposal or device loss.
+
+`executionPlanBuilds`, `executionPlanHits`, `gaussianWeightBuilds` and `gaussianWeightHits` expose construction/reuse counts. `executionPlansCached`, `gaussianWeightsCached` and `cachedParameterBytes` report retained preparation state. The parameter-byte figure excludes JavaScript object overhead, the reusable staging arena, coefficient arrays and all GPU allocations; it is not a process memory measurement. Eight full sixteen-slot plans retain at most 128 KiB of parameter snapshots at a 1024-byte slot stride.
+
+Changing or clearing a Gaussian calibration invalidates prepared plans. An automatic source calibration applies only to a Gaussian directly consuming the original source, not one following another effective stage. Forced direct/tiled strategies remain available. See the [full contract](../../docs/gpu-preparation-cache.md).
