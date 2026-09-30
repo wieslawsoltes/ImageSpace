@@ -40,6 +40,7 @@ jobs:
           dotnet run --project tests/ImageSpace.FilterStackTests -c Release
           dotnet run --project tests/ImageSpace.GaussianTests -c Release
           dotnet run --project tests/ImageSpace.PreviewTests -c Release
+          dotnet run --project tests/ImageSpace.ColorAdjustmentTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
       - uses: actions/upload-artifact@v7
         if: always()
