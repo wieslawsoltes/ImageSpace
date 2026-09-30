@@ -27,7 +27,9 @@ for name in ('browser-results.json', 'resident-gpu-results.json'):
         data = json.loads(file.read_text())
         summary['browser'][name] = data.get('stats', {})
         failures(data)
-for file in sorted(root.glob('resident-gpu*performance.json')):
+performance_files = set(root.glob('resident-gpu*performance.json'))
+performance_files.update(root.glob('gaussian-performance-results.json'))
+for file in sorted(performance_files):
     summary['performance'][file.name] = json.loads(file.read_text())
 root.mkdir(exist_ok=True)
 (root / 'validation-summary.json').write_text(json.dumps(summary, indent=2) + '\n')

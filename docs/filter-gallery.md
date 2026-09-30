@@ -14,7 +14,7 @@ The source is sampled once to at most 256 pixels on its long edge. Gaussian sigm
 
 The editor owns one immutable preview source and, when available, one resident GPU session. Parameter changes use a 120 ms coalescing timer. Only one preview runs at a time. If newer settings arrive, the stale result is discarded and the latest captured recipe is evaluated next. Changing preview controls does not start a document transaction or rebuild the retained main inspector, layers, history or document tabs. Closing the gallery cancels pending stages, waits for owned in-flight work to finish and disposes the session and preview images.
 
-Numeric fields and the preview surface remain retained during parameter editing; stack rows are rebuilt only when the stack's structure changes. The first use still constructs the gallery and initializes pipelines. CPU fallback yields and observes cancellation between stages; it cannot preempt an already-running scalar kernel on the browser UI thread.
+Numeric fields and the preview surface remain retained during parameter editing; stack rows are rebuilt only when the stack's structure changes. The first use still constructs the gallery and initializes pipelines. Browser CPU Gaussian fallback cooperatively processes row batches, with timer yields and cancellation checkpoints. Its rolling row cache avoids a full-image float intermediate. Other scalar CPU kernels still yield/cancel between stages rather than during a stage. Read [streaming Gaussian fallback](streaming-gaussian.md) for scheduling, ownership, memory bounds and the distinction from synchronous filter-menu callers.
 
 ## Reusable C# contracts
 
@@ -46,7 +46,7 @@ await editorSession.ApplyFilterStackAsync(
 
 ## Resident WebGPU execution
 
-The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. The JavaScript module compiles five pipelines: combined color/convolution, fused color stacks, Gaussian horizontal, Gaussian vertical and block-reduced Pixelate.
+The original eight color kernels are retained. Gaussian blur, sharpen, emboss, edge detection and pixelation add five GPU kernels. The deterministic .NET Noise sequence remains on CPU. Seven pipelines implement these thirteen operations: combined color/convolution, fused color stacks, direct Gaussian horizontal/vertical, tiled Gaussian horizontal/vertical, and block-reduced Pixelate. See [tiled Gaussian execution](tiled-gaussian.md) for the direct/auto/tiled strategy and workgroup storage contract.
 
 A session uploads its source once and retains two RGBA ping-pong buffers, readback storage and an aligned uniform arena. Blur's premultiplied float scratch is created only when first needed. Bind groups are cached by input/output pairing. Ordered operations dispatch against these buffers, never reading intermediate stage pixels back to C# or JavaScript. Reading the final output uses a separate copy/readback submission. Repeated preview evaluations reuse the same buffers and original source.
 
@@ -60,15 +60,16 @@ Run the existing engine suites plus:
 
 ```sh
 dotnet run --project tests/ImageSpace.FilterStackTests -c Release
+dotnet run --project tests/ImageSpace.GaussianTests -c Release
 npx playwright test --config playwright.gpu.config.mjs
 npm run test:browser
 ```
 
-The filter-stack suite checks operation order, immutable source/result ownership, all established CPU kernels, recipe validation, cancellation, atomic undo/redo, selection handling and stale-output rejection. It also writes actual C# `FilterEngine` output fixtures. The GPU suite compares all thirteen kernels with those fixtures and an independent scalar reference, including odd dimensions, transparency, maximum blur radius, partial pixel blocks, reset-to-source, concurrent clients, resource reuse and device loss.
+The filter-stack suite checks operation order, immutable source/result ownership, all established CPU kernels, recipe validation, cancellation, atomic undo/redo, selection handling and stale-output rejection. It also writes actual C# `FilterEngine` output fixtures. The GPU suite compares all thirteen kernels with those fixtures and an independent scalar reference, including odd dimensions, transparency, maximum blur radius, partial pixel blocks, reset-to-source, concurrent clients, resource reuse and device loss. The Gaussian suite independently freezes the pre-streaming CPU algorithm for exact all-channel comparisons and memory/ownership/cancellation tests.
 
-Real Uno browser tests exercise gallery preview pixels, parameter controls, effect ordering/bypass/removal, Apply/Cancel, Repeat, undo/redo, native save/reopen and CPU fallback. No JavaScript mutation endpoint drives the C# editor. Build runs the new suites before producing a successful Pages artifact. The independent Resident GPU workflow provides faster diagnostics.
+Real Uno browser tests exercise gallery preview pixels, parameter controls, effect ordering/bypass/removal, Apply/Cancel, Repeat, undo/redo, native save/reopen and CPU fallback, including a blurred edge with WebGPU explicitly unavailable. No JavaScript mutation endpoint drives the C# editor. Build runs the new suites before producing a successful Pages artifact. The independent Resident GPU and Gaussian workflows provide faster diagnostics.
 
-Reports are `filter-stack-tests.json`, `filter-stack-fixtures.json`, `resident-gpu-results.json` and `resident-gpu-performance.json`, plus the normal browser report/screenshots. Work-counter assertions require one source upload, no additional warmed buffer/bind-group construction, no intermediate readbacks, and complete resource release. Wall-clock samples include dispatch, completion and final mapping; SwiftShader runs validate behavior but are not physical-GPU benchmarks.
+Reports include `filter-stack-tests.json`, `filter-stack-fixtures.json`, `gaussian-tests.json`, `gaussian-performance-results.json`, `resident-gpu-results.json` and GPU performance reports, plus the normal browser report/screenshots. Work-counter assertions require one source upload, no additional warmed buffer/bind-group construction, no intermediate readbacks, and complete resource release. GPU wall-clock samples include dispatch, completion and final mapping; SwiftShader runs validate behavior but are not physical-GPU benchmarks. CPU timing excludes cooperative timer scheduling.
 
 ## Remaining boundaries
 

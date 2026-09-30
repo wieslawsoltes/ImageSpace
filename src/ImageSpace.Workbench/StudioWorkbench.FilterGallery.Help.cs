@@ -34,9 +34,13 @@ public sealed partial class StudioWorkbench
         limits, device loss and a 256 MiB resident allocation budget can also select
         fallback. The .NET/browser boundary still transfers initial/final RGBA data.
 
-        Up to sixteen operations are accepted. CPU cancellation occurs between
-        stages, not inside an already-running scalar kernel. Preview updates are
-        coalesced, stale results are discarded, and closing releases preview resources.
+        Up to sixteen operations are accepted. CPU Gaussian fallback uses a pooled
+        rolling row cache instead of a full-image float intermediate. Browser gallery
+        blur work yields between row batches; cancellation is checked within rows
+        and after timer yields. Other CPU kernels still cancel between stages.
+        Preview updates are coalesced, stale results are discarded, and closing
+        releases preview resources. A row can exceed the scheduling time budget;
+        neither a hard frame-latency bound nor GPU-only desktop filtering is implied.
         No physical-GPU performance or pixel-identical Photoshop output is implied.
         """;
 }
