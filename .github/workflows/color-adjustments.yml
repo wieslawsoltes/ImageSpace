@@ -1,0 +1,28 @@
+name: Color adjustment regressions
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: color-adjustments-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Matrix, lookup, mask, clipping, ownership and archive regressions
+        run: dotnet run --project tests/ImageSpace.ColorAdjustmentTests -c Release
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ImageSpace-color-adjustment-validation
+          path: artifacts/color-adjustment-tests.json
+          if-no-files-found: warn

@@ -64,3 +64,7 @@ Linked/unlinked mask placement and exact streaming selection outlines are descri
 ## Filter Gallery and resident compute
 
 Filter Gallery supports ordered raster effects, bypass/reorder/remove, numeric parameters, sampled original/result comparison and one-transaction Apply/Cancel/Repeat. Browser sessions retain source and intermediate buffers and support thirteen GPU kernels, including blur/convolution/pixelation. Seeded Noise and unavailable adapters use CPU fallback; desktop gallery filtering is currently CPU-based. The recipe is not a persisted Smart Filter and does not preserve Photoshop filter metadata. See [the exact workflow and limits](filter-gallery.md).
+
+## Channel Mixer and Exposure (0.6)
+
+Editable color mixing and linear-light exposure use retained inspectors and cached Skia filters. Native archive v6 preserves their settings; older archive versions remain readable. See [the workflow, algorithms, versioning and reusable APIs](channel-mixer-exposure.md). Full Photoshop, HDR, ICC and lossless PSD adjustment metadata are not implied.

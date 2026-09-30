@@ -95,3 +95,7 @@ The visual hierarchy follows public Photoshop workspace conventions. It does not
 ### Bounded GPU preparation
 
 Resident sessions retain at most eight execution plans and eight Gaussian coefficient tables, separate from image buffers. Plans capture private uniform bytes, ping/pong routing and shader selections. Reusing a plan never skips execution or returns cached output. Calibrated automatic routes apply only to original-source Gaussian inputs and invalidate plans when updated. [Preparation and lifetime contract](gpu-preparation-cache.md).
+
+## Channel Mixer and Exposure (0.6)
+
+Editable color mixing and linear-light exposure use retained inspectors and cached Skia filters. Native archive v6 preserves their settings; older archive versions remain readable. See [the workflow, algorithms, versioning and reusable APIs](channel-mixer-exposure.md). Full Photoshop, HDR, ICC and lossless PSD adjustment metadata are not implied.

@@ -20,7 +20,7 @@ public sealed class ImageDocument
     {
         get; set;
     }
-    /// <summary>Null means unrestricted editing; an empty mask means nothing is selected.</summary>
+    /// <summary>Null means unrestricted editing; an empty mask selects nothing.</summary>
     public PixelSurface? Selection
     {
         get; set;
@@ -79,8 +79,8 @@ public sealed class ImageDocument
                 throw new InvalidDataException("Invalid layer geometry or effect parameters.");
             if (layer.Text is null || layer.Name is null || layer.FontFamily is null ||
                 layer.Text.Length > 100000 || layer.Name.Length > 1024 || layer.FontFamily.Length > 1024 ||
-                layer.Curves is null || layer.Levels is null)
-                throw new InvalidDataException("Invalid layer text or tone settings.");
+                layer.Curves is null || layer.Levels is null || layer.ChannelMixer is null || layer.Exposure is null)
+                throw new InvalidDataException("Invalid layer text or adjustment settings.");
             if (!float.IsFinite(layer.MaskDensity) || layer.MaskDensity is < 0 or > 1 ||
                 !float.IsFinite(layer.MaskFeather) || layer.MaskFeather is < 0 or > 32)
                 throw new InvalidDataException("Mask density must be 0–1 and feather must be 0–32 pixels.");
@@ -89,6 +89,8 @@ public sealed class ImageDocument
             layer.MaskPlacement.Validate();
             layer.Curves.Validate();
             layer.Levels.Validate();
+            layer.ChannelMixer.Validate();
+            layer.Exposure.Validate();
         }
         LayerClipping.Validate(Layers);
         if (Selection is not null && (Selection.Width != Width || Selection.Height != Height))

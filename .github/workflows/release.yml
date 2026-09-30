@@ -7,7 +7,7 @@ on:
       version:
         description: Version for a dry run (tags publish; manual runs only build and upload artifacts)
         required: true
-        default: '0.5.1-alpha.1'
+        default: '0.6.0-alpha.1'
 permissions:
   contents: read
 concurrency:
@@ -75,6 +75,7 @@ jobs:
           dotnet run --project tests/ImageSpace.FilterStackTests -c Release
           dotnet run --project tests/ImageSpace.GaussianTests -c Release
           dotnet run --project tests/ImageSpace.PreviewTests -c Release
+          dotnet run --project tests/ImageSpace.ColorAdjustmentTests -c Release
           dotnet run --project tests/ImageSpace.Benchmarks -c Release
           mkdir -p artifacts/packages
           for project in src/ImageSpace.*/ImageSpace.*.csproj; do

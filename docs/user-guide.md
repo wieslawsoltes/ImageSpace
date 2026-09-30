@@ -90,3 +90,7 @@ PSD v1 RGB/8 supports raw, PackBits, ZIP and ZIP prediction. Unicode layer names
 ## Move a mask independently
 
 Select its mask thumbnail and click the chain icon to unlink it. Use Move, the eight resize handles, the rotation handle, or Mask X/Y/width/height/angle in Properties. Arrow keys nudge by one pixel; Shift+Arrow uses ten. Relink to move the layer/mask pair together without changing the current placement. Align mask to layer is a separate explicit reset. Save as `.imagespace` to retain editable affine placement; PSD export bakes it into pixels. See [mask placement](mask-placement.md).
+
+## Channel Mixer and Exposure (0.6)
+
+Editable color mixing and linear-light exposure use retained inspectors and cached Skia filters. Native archive v6 preserves their settings; older archive versions remain readable. See [the workflow, algorithms, versioning and reusable APIs](channel-mixer-exposure.md). Full Photoshop, HDR, ICC and lossless PSD adjustment metadata are not implied.

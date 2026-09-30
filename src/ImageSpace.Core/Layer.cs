@@ -15,7 +15,7 @@ public enum LayerBlend
 public enum AdjustmentKind
 {
     None, BrightnessContrast, Saturation, Invert, Grayscale, Sepia, GaussianBlur, Sharpen,
-    Curves, Levels
+    Curves, Levels, ChannelMixer, Exposure
 }
 
 public sealed class Layer
@@ -31,8 +31,7 @@ public sealed class Layer
     {
         get; set;
     }
-    /// <summary>Clip this layer to the nearest preceding non-clipped content layer.
-    /// Consecutive clipped layers form a single alpha-preserving compositing group.</summary>
+    /// <summary>Clip to the preceding non-clipped content layer's effective alpha.</summary>
     public bool IsClipped
     {
         get; set;
@@ -103,7 +102,7 @@ public sealed class Layer
     public bool MaskEnabled { get; set; } = true;
     /// <summary>One applies the authored mask; zero reveals the entire layer/effect.</summary>
     public float MaskDensity { get; set; } = 1;
-    /// <summary>Non-destructive Gaussian sigma in mask-local pixels, applied before its transform.</summary>
+    /// <summary>Gaussian sigma in mask-local pixels, before its transform.</summary>
     public float MaskFeather
     {
         get; set;
@@ -122,6 +121,8 @@ public sealed class Layer
     }
     public CurvesAdjustment Curves { get; set; } = new();
     public LevelsAdjustment Levels { get; set; } = new();
+    public ChannelMixerAdjustment ChannelMixer { get; set; } = new();
+    public ExposureAdjustment Exposure { get; set; } = new();
 
     public Matrix3x2 Transform => Matrix3x2.CreateScale(ScaleX, ScaleY)
         * Matrix3x2.CreateRotation(Rotation * MathF.PI / 180) * Matrix3x2.CreateTranslation(X, Y);
@@ -134,7 +135,7 @@ public sealed class Layer
         var result = (Layer)MemberwiseClone();
         result.Pixels = Pixels?.Snapshot();
         result.Mask = Mask?.Snapshot();
-        // Curves and Levels are immutable records, including their point collections.
+        // All adjustment settings and their nested records/collections are immutable.
         return result;
     }
 

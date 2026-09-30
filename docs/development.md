@@ -81,3 +81,7 @@ See [UI responsiveness](ui-responsiveness.md) for retained inspector/row ownersh
 ## GPU execution-policy validation
 
 Run `npm run test:browser-helpers` for deterministic preparation, profile, coefficient-byte and ownership contracts. These tests include descriptor/scheduling doubles; they do not execute WGSL. `npx playwright test --config playwright.gpu.config.mjs` requires a real WebGPU adapter and tests the shipped shaders, calibration and cache behavior. The Build and Resident GPU workflows run dependency-free contracts early and retain `browser-contracts.tap`. Full Uno/browser and physical-device validation remain distinct. See [GPU preparation cache](gpu-preparation-cache.md).
+
+## Channel Mixer and Exposure (0.6)
+
+Editable color mixing and linear-light exposure use retained inspectors and cached Skia filters. Native archive v6 preserves their settings; older archive versions remain readable. See [the workflow, algorithms, versioning and reusable APIs](channel-mixer-exposure.md). Full Photoshop, HDR, ICC and lossless PSD adjustment metadata are not implied.

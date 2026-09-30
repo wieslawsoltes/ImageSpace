@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0-alpha.1 — 2026-09-30
+
+- Added editable Channel Mixer and Exposure adjustment layers, immutable core settings, cached Skia matrices/lookups and native archive v6.
+- Added retained inspectors with original numeric/slider controls, RGB output selection, monochrome recipes, exposure presets and one-transaction live gestures.
+- Preserved source pixels, mask/opacity/clipping behavior, undo/redo and source-specific GPU execution policy.
+- Added render stamps, bounded renderer-owned caches, exact snapshot-token gesture ownership and version-downgrade rejection.
+- Added deterministic color-adjustment regressions and four real-input browser scenarios. Validation status is established by CI, not by this changelog.
+- This remains RGB8 working-space editing, not full Photoshop/HDR/ICC or editable Adobe PSD adjustment compatibility.
+
 ## 0.5.1-alpha.1 — Unreleased
 
 - Removed automatic tiled blur based solely on image area/radius after CI measurements showed a substantial SwiftShader slowdown despite byte-identical output and fewer algorithmic input reads.
