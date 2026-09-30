@@ -89,7 +89,8 @@ public sealed partial class StudioWorkbench
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
                 {
-                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
+                    if (document.ActiveLayer is { } layer)
+                        layer.Locked = !layer.Locked;
                 })), has);
                 break;
             case "Type":
@@ -175,7 +176,9 @@ public sealed partial class StudioWorkbench
 
     private void AddAdjustment(AdjustmentKind kind) => Run(() =>
     {
-        if (kind is AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure) Session.AddColorAdjustment(kind);
-        else Session.AddAdjustment(kind);
+        if (kind is AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure)
+            Session.AddColorAdjustment(kind);
+        else
+            Session.AddAdjustment(kind);
     });
 }

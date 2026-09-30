@@ -10,37 +10,48 @@ public sealed partial class EditorSession
     {
         if (kind is not (AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure))
             throw new ArgumentOutOfRangeException(nameof(kind));
-        if (IsInTransaction) throw new InvalidOperationException("Finish the current gesture before adding an adjustment.");
-        if (Document.Layers.Count >= 128) throw new InvalidOperationException("The document already contains 128 layers.");
+        if (IsInTransaction)
+            throw new InvalidOperationException("Finish the current gesture before adding an adjustment.");
+        if (Document.Layers.Count >= 128)
+            throw new InvalidOperationException("The document already contains 128 layers.");
         var layer = new Layer
         {
-            Kind = LayerKind.Adjustment, Adjustment = kind,
+            Kind = LayerKind.Adjustment,
+            Adjustment = kind,
             Name = kind == AdjustmentKind.ChannelMixer ? "Channel Mixer" : "Exposure",
-            Width = Document.Width, Height = Document.Height
+            Width = Document.Width,
+            Height = Document.Height
         };
-        if (Document.Selection is not null) layer.Mask = MaskOperations.FromSelection(Document, layer);
+        if (Document.Selection is not null)
+            layer.Mask = MaskOperations.FromSelection(Document, layer);
         var active = Document.Layers.IndexOf(Document.ActiveLayer!);
         var index = active >= 0 ? LayerClipping.FindEndIndex(Document.Layers, active) + 1 : Document.Layers.Count;
         Execute("New " + layer.Name + " adjustment", document =>
         {
-            document.Layers.Insert(index, layer); document.ActiveLayerId = layer.Id; document.EditMask = false;
+            document.Layers.Insert(index, layer);
+            document.ActiveLayerId = layer.Id;
+            document.EditMask = false;
         });
         return layer;
     }
 
     public void SetChannelMixer(ChannelMixerAdjustment settings)
     {
-        ArgumentNullException.ThrowIfNull(settings); settings.Validate();
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
         var layer = RequireColorAdjustment(AdjustmentKind.ChannelMixer);
-        if (layer.ChannelMixer == settings) return;
+        if (layer.ChannelMixer == settings)
+            return;
         Execute("Edit Channel Mixer", _ => layer.ChannelMixer = settings);
     }
 
     public void SetExposure(ExposureAdjustment settings)
     {
-        ArgumentNullException.ThrowIfNull(settings); settings.Validate();
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
         var layer = RequireColorAdjustment(AdjustmentKind.Exposure);
-        if (layer.Exposure == settings) return;
+        if (layer.Exposure == settings)
+            return;
         Execute("Edit Exposure", _ => layer.Exposure = settings);
     }
 
@@ -77,8 +88,12 @@ public sealed partial class EditorSession
         private bool _closed;
         internal ColorAdjustmentGesture(EditorSession session, Layer layer, ImageDocument snapshot)
         {
-            _session = session; _layer = layer; _snapshot = snapshot; _document = session.Document;
-            _mixer = layer.ChannelMixer; _exposure = layer.Exposure;
+            _session = session;
+            _layer = layer;
+            _snapshot = snapshot;
+            _document = session.Document;
+            _mixer = layer.ChannelMixer;
+            _exposure = layer.Exposure;
         }
         private bool OwnsTransaction => !_closed && ReferenceEquals(_session._before, _snapshot);
         public bool IsActive => OwnsTransaction && ReferenceEquals(_session.Document, _document) &&
@@ -86,29 +101,43 @@ public sealed partial class EditorSession
 
         public void Set(ChannelMixerAdjustment settings)
         {
-            ArgumentNullException.ThrowIfNull(settings); settings.Validate();
+            ArgumentNullException.ThrowIfNull(settings);
+            settings.Validate();
             if (!IsActive || _layer.Adjustment != AdjustmentKind.ChannelMixer)
                 throw new InvalidOperationException("The Channel Mixer gesture is no longer active.");
             _layer.ChannelMixer = settings;
         }
         public void Set(ExposureAdjustment settings)
         {
-            ArgumentNullException.ThrowIfNull(settings); settings.Validate();
+            ArgumentNullException.ThrowIfNull(settings);
+            settings.Validate();
             if (!IsActive || _layer.Adjustment != AdjustmentKind.Exposure)
                 throw new InvalidOperationException("The Exposure gesture is no longer active.");
             _layer.Exposure = settings;
         }
         public void Commit()
         {
-            if (!OwnsTransaction) { _closed = true; return; }
+            if (!OwnsTransaction)
+            {
+                _closed = true;
+                return;
+            }
             var changed = IsActive && (_layer.ChannelMixer != _mixer || _layer.Exposure != _exposure);
             _closed = true;
-            if (changed) _session.Commit(); else _session.Cancel();
+            if (changed)
+                _session.Commit();
+            else
+                _session.Cancel();
         }
         public void Dispose()
         {
-            if (!OwnsTransaction) { _closed = true; return; }
-            _closed = true; _session.Cancel();
+            if (!OwnsTransaction)
+            {
+                _closed = true;
+                return;
+            }
+            _closed = true;
+            _session.Cancel();
         }
     }
 }

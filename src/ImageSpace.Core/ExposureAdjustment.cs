@@ -9,8 +9,14 @@ public sealed record ExposureAdjustment
 {
     private static readonly double[] LinearInput = Enumerable.Range(0, 256)
         .Select(value => Decode(value / 255.0)).ToArray();
-    public double Exposure { get; init; }
-    public double Offset { get; init; }
+    public double Exposure
+    {
+        get; init;
+    }
+    public double Offset
+    {
+        get; init;
+    }
     public double Gamma { get; init; } = 1;
 
     public void Validate()
@@ -45,8 +51,10 @@ public sealed record ExposureAdjustment
     private byte Evaluate(double linear, double gain, double exponent)
     {
         var value = Math.Max(0, linear * gain + Offset);
-        if (exponent != 1) value = Math.Pow(value, exponent);
-        if (value >= 1) return 255;
+        if (exponent != 1)
+            value = Math.Pow(value, exponent);
+        if (value >= 1)
+            return 255;
         return Rgba32.Byte(255 * Encode(value));
     }
 

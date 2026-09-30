@@ -23,10 +23,22 @@ public sealed class AdjustmentParameter : UserControl
     private double? _before;
     private uint? _pointer;
     private bool _updating;
-    public double Minimum { get; }
-    public double Maximum { get; }
-    public double Step { get; }
-    public Func<bool>? TryBeginEdit { get; set; }
+    public double Minimum
+    {
+        get;
+    }
+    public double Maximum
+    {
+        get;
+    }
+    public double Step
+    {
+        get;
+    }
+    public Func<bool>? TryBeginEdit
+    {
+        get; set;
+    }
     public event Action<double>? ValueChanged;
     public event Action? EditCompleted;
     public event Action? EditCanceled;
@@ -36,11 +48,19 @@ public sealed class AdjustmentParameter : UserControl
         get => _value;
         set
         {
-            if (!double.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            if (!double.IsFinite(value))
+                throw new ArgumentOutOfRangeException(nameof(value));
             var next = Math.Clamp(value, Minimum, Maximum);
-            if (_value != next) { _value = next; _track.Invalidate(); }
+            if (_value != next)
+            {
+                _value = next;
+                _track.Invalidate();
+            }
             _updating = true;
-            try { _number.Value = next; }
+            try
+            {
+                _number.Value = next;
+            }
             finally { _updating = false; }
         }
     }
@@ -49,7 +69,9 @@ public sealed class AdjustmentParameter : UserControl
     {
         if (!double.IsFinite(minimum) || !double.IsFinite(maximum) || maximum <= minimum || !double.IsFinite(step) || step <= 0)
             throw new ArgumentOutOfRangeException(nameof(minimum));
-        Minimum = minimum; Maximum = maximum; Step = step;
+        Minimum = minimum;
+        Maximum = maximum;
+        Step = step;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         IsTabStop = true;
         _number = new NumericField(name, Math.Clamp(0, minimum, maximum), minimum, maximum, 252) { Step = step, Format = format };
@@ -59,34 +81,55 @@ public sealed class AdjustmentParameter : UserControl
         AutomationProperties.SetName(_track, name + " slider");
         AutomationProperties.SetName(this, name + " control");
         var body = new StackPanel { Spacing = 1 };
-        body.Children.Add(_number); body.Children.Add(_track); Content = body;
+        body.Children.Add(_number);
+        body.Children.Add(_track);
+        Content = body;
         Value = Math.Clamp(0, minimum, maximum);
         _number.ValueChanged += value =>
         {
-            if (_updating) return;
-            if (!Start()) { Value = _value; _number.ResetPendingEdit(); return; }
-            Change(value); Finish();
+            if (_updating)
+                return;
+            if (!Start())
+            {
+                Value = _value;
+                _number.ResetPendingEdit();
+                return;
+            }
+            Change(value);
+            Finish();
         };
         _track.PointerPressed += (_, e) =>
         {
             var point = e.GetCurrentPoint(_track);
-            if (!IsEnabled || point.Properties.IsRightButtonPressed || _before is not null) return;
+            if (!IsEnabled || point.Properties.IsRightButtonPressed || _before is not null)
+                return;
             Focus(FocusState.Programmatic);
-            if (!Start()) return;
+            if (!Start())
+                return;
             _pointer = e.Pointer.PointerId;
-            if (!_track.CapturePointer(e.Pointer)) { CancelEdit(); return; }
-            Move(point.Position.X); e.Handled = true;
+            if (!_track.CapturePointer(e.Pointer))
+            {
+                CancelEdit();
+                return;
+            }
+            Move(point.Position.X);
+            e.Handled = true;
         };
         _track.PointerMoved += (_, e) =>
         {
-            if (_before is null || _pointer != e.Pointer.PointerId) return;
-            Move(e.GetCurrentPoint(_track).Position.X); e.Handled = true;
+            if (_before is null || _pointer != e.Pointer.PointerId)
+                return;
+            Move(e.GetCurrentPoint(_track).Position.X);
+            e.Handled = true;
         };
         _track.PointerReleased += (_, e) =>
         {
-            if (_before is null || _pointer != e.Pointer.PointerId) return;
+            if (_before is null || _pointer != e.Pointer.PointerId)
+                return;
             Move(e.GetCurrentPoint(_track).Position.X);
-            Finish(); _track.ReleasePointerCapture(e.Pointer); e.Handled = true;
+            Finish();
+            _track.ReleasePointerCapture(e.Pointer);
+            e.Handled = true;
         };
         _track.PointerCanceled += (_, _) => CancelEdit();
         _track.PointerCaptureLost += (_, _) => CancelEdit();
@@ -97,14 +140,18 @@ public sealed class AdjustmentParameter : UserControl
     public void ResetPendingEdit() => _number.ResetPendingEdit();
     private bool Start()
     {
-        if (!IsEnabled || _before is not null || TryBeginEdit?.Invoke() == false) return false;
-        _before = _value; return true;
+        if (!IsEnabled || _before is not null || TryBeginEdit?.Invoke() == false)
+            return false;
+        _before = _value;
+        return true;
     }
     private void Change(double value)
     {
         var next = Math.Clamp(value, Minimum, Maximum);
-        if (next == _value) return;
-        Value = next; ValueChanged?.Invoke(next);
+        if (next == _value)
+            return;
+        Value = next;
+        ValueChanged?.Invoke(next);
     }
     private void Move(double x)
     {
@@ -114,22 +161,37 @@ public sealed class AdjustmentParameter : UserControl
     }
     private void Finish()
     {
-        if (_before is null) return;
-        _before = null; _pointer = null; EditCompleted?.Invoke();
+        if (_before is null)
+            return;
+        _before = null;
+        _pointer = null;
+        EditCompleted?.Invoke();
     }
     public void CancelEdit()
     {
-        if (_before is not { } value) return;
-        _before = null; _pointer = null; Value = value;
-        _track.ReleasePointerCaptures(); EditCanceled?.Invoke();
+        if (_before is not { } value)
+            return;
+        _before = null;
+        _pointer = null;
+        Value = value;
+        _track.ReleasePointerCaptures();
+        EditCanceled?.Invoke();
     }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.OriginalSource is TextBox) return;
-        if (e.Key == VirtualKey.Escape) { CancelEdit(); e.Handled = true; return; }
-        if (e.Key is not (VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey.Home or VirtualKey.End)) return;
+        if (e.OriginalSource is TextBox)
+            return;
+        if (e.Key == VirtualKey.Escape)
+        {
+            CancelEdit();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key is not (VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey.Home or VirtualKey.End))
+            return;
         e.Handled = true; // Never nudge the canvas layer while this control owns arrow input.
-        if (!Start()) return;
+        if (!Start())
+            return;
         var coarse = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
         var next = e.Key switch
@@ -139,12 +201,15 @@ public sealed class AdjustmentParameter : UserControl
             VirtualKey.Left or VirtualKey.Down => _value - Step * (coarse ? 10 : 1),
             _ => _value + Step * (coarse ? 10 : 1)
         };
-        Change(next); Finish();
+        Change(next);
+        Finish();
     }
     private void Render(SKCanvas canvas, Size size)
     {
         canvas.Clear(SKColors.Transparent);
-        var left = 7f; var right = Math.Max(left + 1, (float)size.Width - 7); var y = (float)size.Height / 2;
+        var left = 7f;
+        var right = Math.Max(left + 1, (float)size.Width - 7);
+        var y = (float)size.Height / 2;
         using var paint = new SKPaint { IsAntialias = true, Color = new SKColor(105, 105, 105), StrokeWidth = 2 };
         canvas.DrawLine(left, y, right, y, paint);
         if (Minimum < 0 && Maximum > 0)
@@ -155,7 +220,9 @@ public sealed class AdjustmentParameter : UserControl
         var thumb = left + (float)((_value - Minimum) / (Maximum - Minimum)) * (right - left);
         paint.Color = IsEnabled ? new SKColor(206, 206, 206) : new SKColor(95, 95, 95);
         canvas.DrawCircle(thumb, y, 5, paint);
-        paint.Style = SKPaintStyle.Stroke; paint.StrokeWidth = 1; paint.Color = new SKColor(32, 32, 32);
+        paint.Style = SKPaintStyle.Stroke;
+        paint.StrokeWidth = 1;
+        paint.Color = new SKColor(32, 32, 32);
         canvas.DrawCircle(thumb, y, 5, paint);
     }
 }

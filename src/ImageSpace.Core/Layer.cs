@@ -22,30 +22,66 @@ public sealed class Layer
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "Layer";
-    public LayerKind Kind { get; set; }
+    public LayerKind Kind
+    {
+        get; set;
+    }
     public bool Visible { get; set; } = true;
-    public bool Locked { get; set; }
+    public bool Locked
+    {
+        get; set;
+    }
     /// <summary>Clip to the preceding non-clipped content layer's effective alpha.</summary>
-    public bool IsClipped { get; set; }
+    public bool IsClipped
+    {
+        get; set;
+    }
     public float Opacity { get; set; } = 1;
-    public LayerBlend Blend { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
+    public LayerBlend Blend
+    {
+        get; set;
+    }
+    public float X
+    {
+        get; set;
+    }
+    public float Y
+    {
+        get; set;
+    }
     public float ScaleX { get; set; } = 1;
     public float ScaleY { get; set; } = 1;
-    public float Rotation { get; set; }
+    public float Rotation
+    {
+        get; set;
+    }
     public float Width { get; set; } = 200;
     public float Height { get; set; } = 140;
     public Rgba32 Color { get; set; } = new(54, 145, 230);
     public Rgba32 StrokeColor { get; set; } = Rgba32.White;
-    public float StrokeWidth { get; set; }
-    public float CornerRadius { get; set; }
+    public float StrokeWidth
+    {
+        get; set;
+    }
+    public float CornerRadius
+    {
+        get; set;
+    }
     public string Text { get; set; } = "Your text";
     public string FontFamily { get; set; } = "Inter";
     public float FontSize { get; set; } = 64;
-    public bool Bold { get; set; }
-    public PixelSurface? Pixels { get; set; }
-    public PixelSurface? Mask { get; set; }
+    public bool Bold
+    {
+        get; set;
+    }
+    public PixelSurface? Pixels
+    {
+        get; set;
+    }
+    public PixelSurface? Mask
+    {
+        get; set;
+    }
     /// <summary>Linked placements are layer-local; unlinked placements are document-local.</summary>
     public bool MaskLinked { get; set; } = true;
     public AffinePlacement MaskPlacement { get; set; } = AffinePlacement.Identity;
@@ -55,7 +91,8 @@ public sealed class Layer
     {
         get
         {
-            if (MaskLinked) return MaskPlacement.Matrix;
+            if (MaskLinked)
+                return MaskPlacement.Matrix;
             if (!Matrix3x2.Invert(Transform, out var inverse))
                 throw new InvalidOperationException("The layer transform cannot be inverted.");
             return MaskPlacement.Matrix * inverse;
@@ -66,10 +103,22 @@ public sealed class Layer
     /// <summary>One applies the authored mask; zero reveals the entire layer/effect.</summary>
     public float MaskDensity { get; set; } = 1;
     /// <summary>Gaussian sigma in mask-local pixels, before its transform.</summary>
-    public float MaskFeather { get; set; }
-    public AdjustmentKind Adjustment { get; set; }
-    public float Amount { get; set; }
-    public float Secondary { get; set; }
+    public float MaskFeather
+    {
+        get; set;
+    }
+    public AdjustmentKind Adjustment
+    {
+        get; set;
+    }
+    public float Amount
+    {
+        get; set;
+    }
+    public float Secondary
+    {
+        get; set;
+    }
     public CurvesAdjustment Curves { get; set; } = new();
     public LevelsAdjustment Levels { get; set; } = new();
     public ChannelMixerAdjustment ChannelMixer { get; set; } = new();
@@ -92,7 +141,10 @@ public sealed class Layer
 
     public static Layer Raster(string name, int width, int height) => new()
     {
-        Name = name, Kind = LayerKind.Raster, Width = width, Height = height,
+        Name = name,
+        Kind = LayerKind.Raster,
+        Width = width,
+        Height = height,
         Pixels = new PixelSurface(width, height)
     };
 }

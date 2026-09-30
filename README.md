@@ -21,11 +21,17 @@ ImageSpace is an independent layered image editor built with **Uno Platform**, *
 
 Eleven reusable .NET libraries separate the document model, copy-on-write tiles, brushes, selections, filters, transactions, file formats, rendering, controls, viewport, storage contracts and workbench. The application is not a monolithic canvas or an HTML screenshot of a desktop editor.
 
-> **0.5.1-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
+> **0.6.0-alpha.1 — compatibility and performance work, not full Photoshop parity.** The workspace follows familiar Photoshop conventions but is not pixel-identical. PSD support is bounded raster interchange, not lossless Photoshop editing. Read the [supported boundary](docs/features.md) before working with important originals.
 
 ![Real Uno browser workspace](https://wieslawsoltes.github.io/ImageSpace/screenshots/workspace.png)
 
-## New in 0.5.1
+## New in 0.6
+
+**Editable Channel Mixer and Exposure.** Mix RGB channels or create monochrome corrections, and adjust linear-light exposure, offset and gamma with retained numeric/slider controls. Live gestures produce one undo state, source pixels remain unchanged, and cached Skia matrices/lookups work with masks, opacity and clipping. Native archive v6 preserves the new settings; PSD remains bounded compatibility interchange.
+
+[Color-adjustment algorithms, reusable APIs and validation](docs/channel-mixer-exposure.md).
+
+## GPU execution policy (0.5.1)
 
 Gaussian automatic dispatch retains the direct shader until an explicit, same-session calibration demonstrates a materially faster, byte-identical tiled result. This replaces an area/radius heuristic that regressed software-adapter performance. Tiled pipelines compile lazily; ordinary selection and filter preview do not initiate benchmarking. [Read the actual measurements and calibration contract](docs/tiled-gaussian.md).
 
@@ -76,7 +82,7 @@ Link/unlink masks without a jump, manipulate their affine frame with on-canvas h
 | Layers | Sparse pixels, editable multiline type, rectangle/ellipse shapes, masks and raster-mask application, sixteen blends, opacity, visibility, locks, duplicate/reorder and rasterization |
 | Geometry | Eight-handle scaling, rotation, constrained motion, numeric properties, non-destructive crop and canvas/image sizing |
 | Tone | **Curves and Levels**, composite RGB and separate color channels, draggable graphs, numeric/keyboard editing, presets and live undoable previews |
-| Effects | Fourteen CPU filters, thirteen optional WebGPU color/spatial kernels, an ordered Filter Gallery and eight live Skia adjustment types |
+| Effects | Fourteen CPU filters, thirteen optional WebGPU color/spatial kernels, an ordered Filter Gallery and ten live Skia adjustment types |
 | Files | Editable native archives, bounded RGB/8 PSD, raster import, PNG/JPEG/WebP export, multiple document tabs |
 | Recovery | Local IndexedDB or atomic desktop recovery file; visible error reporting |
 
@@ -591,7 +597,7 @@ Build, desktop, Pages, release and formatting workflows are under `.github/workf
 
 ## Files and limits
 
-**Use `.imagespace` for editable roundtrips and retain original imports.** The native reader accepts versions 1–5. Tone settings require version 2; adjustment masks, density/feather and fractional adjustment crossfades require version 3; independent mask placement requires version 4; clipping relationships require version 5. The writer selects the minimal required version. Applying a raster mask leaves ordinary pixel data and does not itself require a new version. Older readers must reject unsupported versions instead of silently changing appearance.
+**Use `.imagespace` for editable roundtrips and retain original imports.** The native reader accepts versions 1–6. Tone settings require version 2; adjustment masks, density/feather and fractional adjustment crossfades require version 3; independent mask placement requires version 4; clipping relationships require version 5. The writer selects the minimal required version. Applying a raster mask leaves ordinary pixel data and does not itself require a new version. Older readers must reject unsupported versions instead of silently changing appearance.
 
 PSD import supports version-1 RGB/8 raw, PackBits, ZIP and row-predicted ZIP channels, Unicode names, resolution and placed user masks with supported density/feather metadata. Smart objects, editable Photoshop type/adjustments, folder groups, non-default clipping blend-group options and ICC profiles remain outside the interchange boundary. PSD export rasterizes type/shapes/transforms and supported masks; visible live adjustments use a flattened compatibility image. PNG/JPEG/WebP exports contain the composite, not edit state.
 

@@ -23,9 +23,12 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
 
     public ColorAdjustmentEditor(AdjustmentKind kind, Action preview)
     {
-        if (kind is not (AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure)) throw new ArgumentOutOfRangeException(nameof(kind));
-        _kind = kind; _preview = preview ?? throw new ArgumentNullException(nameof(preview));
-        HorizontalContentAlignment = HorizontalAlignment.Stretch; Content = _body;
+        if (kind is not (AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        _kind = kind;
+        _preview = preview ?? throw new ArgumentNullException(nameof(preview));
+        HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        Content = _body;
         _body.Children.Add(Studio.Label(kind == AdjustmentKind.ChannelMixer ? "CHANNEL MIXER" : "EXPOSURE", 11, "#b5b5b5"));
         if (kind == AdjustmentKind.ChannelMixer)
         {
@@ -34,15 +37,25 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
             {
                 var selected = channel;
                 var button = new StudioButton("Mixer output " + channel, () => SelectChannel(selected))
-                { Content = Studio.Label(channel.ToString(), 11), Width = 77, Padding = new Thickness(4, 2, 4, 2) };
-                _channels[channel] = button; row.Children.Add(button);
+                {
+                    Content = Studio.Label(channel.ToString(), 11),
+                    Width = 77,
+                    Padding = new Thickness(4, 2, 4, 2)
+                };
+                _channels[channel] = button;
+                row.Children.Add(button);
             }
-            _body.Children.Add(row); _body.Children.Add(_monochrome);
+            _body.Children.Add(row);
+            _body.Children.Add(_monochrome);
             _monochrome.Click += (_, _) =>
             {
-                if (_refreshing || Current is not { } layer) return;
+                if (_refreshing || Current is not { } layer)
+                    return;
                 var enabled = _monochrome.IsChecked == true;
-                EditMixer(layer.ChannelMixer with { Monochrome = enabled });
+                EditMixer(layer.ChannelMixer with
+                {
+                    Monochrome = enabled
+                });
             };
             AddParameter("Mixer red", -200, 200, 1, "0.##");
             AddParameter("Mixer green", -200, 200, 1, "0.##");
@@ -56,15 +69,21 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
             AddParameter("Exposure offset", -.5, .5, .0001, "0.0000");
             AddParameter("Exposure gamma", .01, 9.99, .01, "0.00");
             var description = Studio.Label("Linear-light sRGB · RGB/8 output", 10, "#989898");
-            description.TextWrapping = TextWrapping.Wrap; _body.Children.Add(description);
+            description.TextWrapping = TextWrapping.Wrap;
+            _body.Children.Add(description);
         }
         StudioButton? presets = null;
         presets = new StudioButton(kind + " presets", () => ShowPresets(presets!))
-        { Width = 123, Content = Studio.Label("Presets  ⌄", 11) };
+        {
+            Width = 123,
+            Content = Studio.Label("Presets  ⌄", 11)
+        };
         var reset = new StudioButton("Reset " + kind, Reset) { Width = 123, Content = Studio.Label("Reset", 11) };
         _body.Children.Add(Studio.Row(presets, reset));
         _previewButton = new StudioButton("Color adjustment preview", TogglePreview)
-        { HorizontalAlignment = HorizontalAlignment.Stretch };
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         _body.Children.Add(_previewButton);
         Unloaded += (_, _) => CancelGesture();
     }
@@ -76,7 +95,8 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
         parameter.ValueChanged += value => Change(index, value);
         parameter.EditCompleted += CompleteGesture;
         parameter.EditCanceled += CancelGesture;
-        _parameters.Add(parameter); _body.Children.Add(parameter);
+        _parameters.Add(parameter);
+        _body.Children.Add(parameter);
     }
 
     public void Bind(EditorSession session, Guid layerId)
@@ -86,21 +106,29 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
         if (switched)
         {
             CancelGesture();
-            if (!ReferenceEquals(_session, session)) _lastChannels.Clear();
-            else if (_layerId != Guid.Empty) _lastChannels[_layerId] = _channel;
-            _session = session; _layerId = layerId;
+            if (!ReferenceEquals(_session, session))
+                _lastChannels.Clear();
+            else if (_layerId != Guid.Empty)
+                _lastChannels[_layerId] = _channel;
+            _session = session;
+            _layerId = layerId;
             _channel = _lastChannels.GetValueOrDefault(layerId, ToneChannel.Red);
             // Bound view-only channel state by the document's actual layer identities.
-            foreach (var id in _lastChannels.Keys.Where(id => !session.Document.Layers.Any(layer => layer.Id == id)).ToArray()) _lastChannels.Remove(id);
+            foreach (var id in _lastChannels.Keys.Where(id => !session.Document.Layers.Any(layer => layer.Id == id)).ToArray())
+                _lastChannels.Remove(id);
         }
-        if (_gesture is not null && !_gesture.IsActive) CancelGesture();
+        if (_gesture is not null && !_gesture.IsActive)
+            CancelGesture();
         Refresh();
-        if (switched) foreach (var parameter in _parameters) parameter.ResetPendingEdit();
+        if (switched)
+        foreach (var parameter in _parameters)
+            parameter.ResetPendingEdit();
     }
 
     private void Refresh()
     {
-        if (_gesture is not null || Current is not { } layer) return;
+        if (_gesture is not null || Current is not { } layer)
+            return;
         _refreshing = true;
         try
         {
@@ -114,14 +142,17 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
                     button.IsEnabled = !layer.Locked && !layer.ChannelMixer.Monochrome;
                 }
                 var mix = layer.ChannelMixer.GetChannel(EffectiveChannel(layer));
-                _parameters[0].Value = mix.Red; _parameters[1].Value = mix.Green;
-                _parameters[2].Value = mix.Blue; _parameters[3].Value = mix.Constant;
+                _parameters[0].Value = mix.Red;
+                _parameters[1].Value = mix.Green;
+                _parameters[2].Value = mix.Blue;
+                _parameters[3].Value = mix.Constant;
                 ShowTotal(mix);
             }
             else
             {
                 _parameters[0].Value = layer.Exposure.Exposure;
-                _parameters[1].Value = layer.Exposure.Offset; _parameters[2].Value = layer.Exposure.Gamma;
+                _parameters[1].Value = layer.Exposure.Offset;
+                _parameters[2].Value = layer.Exposure.Gamma;
             }
             _previewButton.SetLabel(layer.Visible ? "Preview ✓" : "Preview off");
             _previewButton.SetName("Color adjustment preview");
@@ -132,36 +163,58 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
     private void ShowTotal(ChannelMix mix)
     {
         var text = $"Total: {mix.Total:0.##}%" + (Math.Abs(mix.Total - 100) > .0001 ? "  ·  brightness may change" : "");
-        if (_total.Text != text) _total.Text = text;
+        if (_total.Text != text)
+            _total.Text = text;
     }
     private void SelectChannel(ToneChannel channel)
     {
-        if (_gesture is not null || Current?.ChannelMixer.Monochrome != false) return;
-        _channel = channel; Refresh();
-        foreach (var parameter in _parameters) parameter.ResetPendingEdit();
+        if (_gesture is not null || Current?.ChannelMixer.Monochrome != false)
+            return;
+        _channel = channel;
+        Refresh();
+        foreach (var parameter in _parameters)
+            parameter.ResetPendingEdit();
     }
     private bool BeginGesture()
     {
-        if (_disposed || _refreshing || _gesture is not null || _session is null || _session.IsInTransaction || Current is not { Locked: false }) return false;
-        try { _gesture = _session.BeginColorAdjustmentEdit(); return true; }
+        if (_disposed || _refreshing || _gesture is not null || _session is null || _session.IsInTransaction || Current is not { Locked: false })
+            return false;
+        try
+        {
+            _gesture = _session.BeginColorAdjustmentEdit();
+            return true;
+        }
         catch (Exception error) { Error?.Invoke(error.Message); return false; }
     }
     private void Change(int index, double value)
     {
-        if (_gesture?.IsActive != true || Current is not { } layer) return;
+        if (_gesture?.IsActive != true || Current is not { } layer)
+            return;
         try
         {
             if (_kind == AdjustmentKind.ChannelMixer)
             {
-                var channel = EffectiveChannel(layer); var mix = layer.ChannelMixer.GetChannel(channel);
-                mix = index switch { 0 => mix with { Red = value }, 1 => mix with { Green = value },
-                    2 => mix with { Blue = value }, _ => mix with { Constant = value } };
-                _gesture.Set(layer.ChannelMixer.WithChannel(channel, mix)); ShowTotal(mix);
+                var channel = EffectiveChannel(layer);
+                var mix = layer.ChannelMixer.GetChannel(channel);
+                mix = index switch
+                {
+                    0 => mix with { Red = value },
+                    1 => mix with { Green = value },
+                    2 => mix with { Blue = value },
+                    _ => mix with { Constant = value }
+                };
+                _gesture.Set(layer.ChannelMixer.WithChannel(channel, mix));
+                ShowTotal(mix);
             }
             else
             {
                 var settings = layer.Exposure;
-                _gesture.Set(index switch { 0 => settings with { Exposure = value }, 1 => settings with { Offset = value }, _ => settings with { Gamma = value } });
+                _gesture.Set(index switch
+                {
+                    0 => settings with { Exposure = value },
+                    1 => settings with { Offset = value },
+                    _ => settings with { Gamma = value }
+                });
             }
             _preview();
         }
@@ -169,42 +222,68 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
     }
     private void CompleteGesture()
     {
-        var gesture = _gesture; _gesture = null;
-        if (gesture is null) return;
-        try { gesture.Commit(); }
+        var gesture = _gesture;
+        _gesture = null;
+        if (gesture is null)
+            return;
+        try
+        {
+            gesture.Commit();
+        }
         catch (Exception error) { Error?.Invoke(error.Message); }
         finally { gesture.Dispose(); }
-        Refresh(); _preview();
+        Refresh();
+        _preview();
     }
     private void CancelGesture()
     {
-        var gesture = _gesture; _gesture = null;
-        foreach (var parameter in _parameters) parameter.CancelEdit();
-        if (gesture is null) return;
-        gesture.Dispose(); Refresh(); _preview();
+        var gesture = _gesture;
+        _gesture = null;
+        foreach (var parameter in _parameters)
+            parameter.CancelEdit();
+        if (gesture is null)
+            return;
+        gesture.Dispose();
+        Refresh();
+        _preview();
     }
     private void EditMixer(ChannelMixerAdjustment settings)
     {
-        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false }) return;
-        try { _session.SetChannelMixer(settings); }
+        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false })
+            return;
+        try
+        {
+            _session.SetChannelMixer(settings);
+        }
         catch (Exception error) { Error?.Invoke(error.Message); }
-        Refresh(); _preview();
+        Refresh();
+        _preview();
     }
     private void EditExposure(ExposureAdjustment settings)
     {
-        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false }) return;
-        try { _session.SetExposure(settings); }
+        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false })
+            return;
+        try
+        {
+            _session.SetExposure(settings);
+        }
         catch (Exception error) { Error?.Invoke(error.Message); }
-        Refresh(); _preview();
+        Refresh();
+        _preview();
     }
     private void TogglePreview()
     {
-        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false } layer) return;
-        _session.Execute("Toggle adjustment preview", _ => layer.Visible = !layer.Visible); _preview();
+        if (_session is null || _gesture is not null || _session.IsInTransaction || Current is not { Locked: false } layer)
+            return;
+        _session.Execute("Toggle adjustment preview", _ => layer.Visible = !layer.Visible);
+        _preview();
     }
     private void Reset()
     {
-        if (_kind == AdjustmentKind.ChannelMixer) EditMixer(new()); else EditExposure(new());
+        if (_kind == AdjustmentKind.ChannelMixer)
+            EditMixer(new());
+        else
+            EditExposure(new());
     }
     private void ShowPresets(FrameworkElement anchor)
     {
@@ -235,7 +314,11 @@ public sealed class ColorAdjustmentEditor : UserControl, IDisposable
     }
     public new void Dispose()
     {
-        if (_disposed) return;
-        CancelGesture(); _disposed = true; _lastChannels.Clear(); _session = null;
+        if (_disposed)
+            return;
+        CancelGesture();
+        _disposed = true;
+        _lastChannels.Clear();
+        _session = null;
     }
 }

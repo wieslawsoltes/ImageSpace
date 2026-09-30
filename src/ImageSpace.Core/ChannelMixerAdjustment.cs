@@ -7,13 +7,19 @@ public sealed record ChannelMixerAdjustment
     public ChannelMix Green { get; init; } = new(0, 100, 0);
     public ChannelMix Blue { get; init; } = new(0, 0, 100);
     public ChannelMix Gray { get; init; } = new(40, 40, 20);
-    public bool Monochrome { get; init; }
+    public bool Monochrome
+    {
+        get; init;
+    }
 
     public void Validate()
     {
         if (Red is null || Green is null || Blue is null || Gray is null)
             throw new InvalidDataException("Channel Mixer requires all color and monochrome channel settings.");
-        Red.Validate(); Green.Validate(); Blue.Validate(); Gray.Validate();
+        Red.Validate();
+        Green.Validate();
+        Blue.Validate();
+        Gray.Validate();
     }
 
     public ChannelMix GetChannel(ToneChannel channel) => channel switch
