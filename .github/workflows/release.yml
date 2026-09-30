@@ -7,7 +7,7 @@ on:
       version:
         description: Version for a dry run (tags publish; manual runs only build and upload artifacts)
         required: true
-        default: '0.5.0-alpha.1'
+        default: '0.5.1-alpha.1'
 permissions:
   contents: read
 concurrency:
