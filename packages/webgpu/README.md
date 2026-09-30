@@ -70,3 +70,11 @@ For Uno integration, transactional editing and the gallery workflow, see `docs/f
 Adjacent enabled color operations now share one WGSL dispatch. Each operation still packs to RGBA8 and decodes before the next; fusion does not silently change the filter chain to a higher-precision algorithm. Blur, convolution and pixelation terminate a color run. The `createSession` option `{ fuseColorOperations: false }` selects the unfused reference path. `logicalOperations`, `fusedPasses`, `dispatches` and `parameterBytesUploaded` distinguish work without pretending to measure physical GPU time. The session reuses its host parameter arena; initial/final image copies and readbacks remain.
 
 The differential suite covers every ordered pair of color kernels, a sixteen-stage chain and mixed spatial chains, including hidden RGB and low-alpha inputs. The eight-stage benchmark compares two warmed resident sessions on the same adapter, retaining all timing samples and resource counters.
+
+## Workgroup-tiled Gaussian blur
+
+`createSession` also accepts `{ gaussianBlur: 'auto' | 'direct' | 'tiled' }`. Auto chooses between the existing reference and cooperative tile shaders; forced modes support same-device profiling and differential checks. The operation remains a separable, clamped-edge, premultiplied Gaussian with unchanged sigma and output precision.
+
+Horizontal 32×4 workgroups cache packed pixels; vertical 4×32 workgroups cache the exact float intermediate. Their maximum shared-memory footprints are 3584 and 14,336 bytes. Halo/tail lanes participate in synchronization before leaving the kernel. Existing resident buffers and bind groups are reused, with no intermediate readback.
+
+`statistics()` includes `tiledGaussianPasses`, `directGaussianPasses` and `gaussianInputReads`. The latter counts algorithmic shader-input accesses, including redundant halo loads—not physical DRAM traffic. Seven cached pipelines implement the same thirteen filters. Read [the strategy, safety and validation contract](../../docs/tiled-gaussian.md) before interpreting benchmark results.

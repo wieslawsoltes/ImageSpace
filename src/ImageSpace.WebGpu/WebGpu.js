@@ -111,6 +111,58 @@ fn main(@builtin(global_invocation_id) id:vec3u) {
   if (sum.w>0.0) { value=pack(vec4f(sum.xyz/sum.w,sum.w*255.0)); }
   output[id.y*p.width+id.x]=value;
 }`;
+  // Horizontal tiles keep packed RGBA (3,584 bytes); vertical tiles keep the
+  // exact float intermediate (14,336 bytes). Both fit the 16 KiB core baseline.
+  // Every lane participates in cooperative loading and the barrier, including
+  // out-of-image lanes in partial workgroups. Bounds exits occur AFTER the barrier.
+  const tiledHorizontalCode = header + `
+@group(0) @binding(0) var<storage,read> input:array<u32>;
+@group(0) @binding(1) var<storage,read_write> output:array<vec4f>;
+var<workgroup> tile:array<u32,896>;
+@compute @workgroup_size(32,4)
+fn main(@builtin(workgroup_id) group:vec3u,
+        @builtin(local_invocation_id) local:vec3u,
+        @builtin(local_invocation_index) lane:u32) {
+  let tileWidth=32u+2u*p.radius;
+  let left=i32(group.x*32u)-i32(p.radius);
+  let top=i32(group.y*4u);
+  for (var n=lane;n<tileWidth*4u;n+=128u) {
+    tile[n]=input[offset(left+i32(n%tileWidth),top+i32(n/tileWidth))];
+  }
+  workgroupBarrier();
+  let x=group.x*32u+local.x; let y=group.y*4u+local.y;
+  if ((x>=p.width)||(y>=p.height)) { return; }
+  var sum=vec4f(0.0);
+  for (var tap=0u;tap<=2u*p.radius;tap++) {
+    let c=decode(tile[local.y*tileWidth+local.x+tap]); let a=c.w/255.0;
+    sum+=vec4f(c.xyz*a,a)*weight(i32(tap)-i32(p.radius));
+  }
+  output[y*p.width+x]=sum;
+}`;
+  const tiledVerticalCode = header + `
+@group(0) @binding(0) var<storage,read> input:array<vec4f>;
+@group(0) @binding(1) var<storage,read_write> output:array<u32>;
+var<workgroup> tile:array<vec4f,896>;
+@compute @workgroup_size(4,32)
+fn main(@builtin(workgroup_id) group:vec3u,
+        @builtin(local_invocation_id) local:vec3u,
+        @builtin(local_invocation_index) lane:u32) {
+  let tileHeight=32u+2u*p.radius;
+  let left=i32(group.x*4u); let top=i32(group.y*32u)-i32(p.radius);
+  for (var n=lane;n<tileHeight*4u;n+=128u) {
+    tile[n]=input[offset(left+i32(n%4u),top+i32(n/4u))];
+  }
+  workgroupBarrier();
+  let x=group.x*4u+local.x; let y=group.y*32u+local.y;
+  if ((x>=p.width)||(y>=p.height)) { return; }
+  var sum=vec4f(0.0);
+  for (var tap=0u;tap<=2u*p.radius;tap++) {
+    sum+=tile[(local.y+tap)*4u+local.x]*weight(i32(tap)-i32(p.radius));
+  }
+  var value=0u;
+  if (sum.w>0.0) { value=pack(vec4f(sum.xyz/sum.w,sum.w*255.0)); }
+  output[y*p.width+x]=value;
+}`;
   const pixelateCode = header + `
 @group(0) @binding(0) var<storage,read> input:array<u32>;
 @group(0) @binding(1) var<storage,read_write> output:array<u32>;
@@ -162,7 +214,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           ] });
           const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [layout] });
           const pipelines = {};
-          for (const [name, code] of Object.entries({ point: pointCode, fused: fusedCode, horizontal: horizontalCode, vertical: verticalCode, pixelate: pixelateCode })) {
+          for (const [name, code] of Object.entries({ point: pointCode, fused: fusedCode, horizontal: horizontalCode, vertical: verticalCode, tiledHorizontal: tiledHorizontalCode, tiledVertical: tiledVerticalCode, pixelate: pixelateCode })) {
             const module = device.createShaderModule({ label: 'ImageSpace ' + name, code });
             const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error');
             if (errors.length) throw new Error(errors.map(e => `${name} ${e.lineNum}:${e.linePos} ${e.message}`).join('\n'));
@@ -202,6 +254,9 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
     if (!options || typeof options !== 'object' ||
         (options.fuseColorOperations !== undefined && typeof options.fuseColorOperations !== 'boolean'))
       throw new TypeError('fuseColorOperations must be a boolean.');
+    if (options.gaussianBlur !== undefined && !['auto', 'direct', 'tiled'].includes(options.gaussianBlur))
+      throw new TypeError('gaussianBlur must be auto, direct or tiled.');
+    const blurStrategy = options.gaussianBlur ?? 'auto';
     const fuseColors = options.fuseColorOperations !== false;
     validatePixels(bytes, width, height);
     const snapshot = bytes.slice();
@@ -215,7 +270,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
       if (length > device.limits.maxStorageBufferBindingSize || length > device.limits.maxBufferSize || reserved + fixedBytes > budget) return null;
       const resources = [], bindings = new Map();
       let closed = false, scratch = null, last = null, owned = 0;
-      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0, logicalOperations: 0, fusedPasses: 0, parameterBytesUploaded: 0 };
+      const stats = { sourceUploads: 0, uploadedBytes: 0, submissions: 0, dispatches: 0, readbacks: 0, bufferAllocations: 0, bindGroupBuilds: 0, logicalOperations: 0, fusedPasses: 0, parameterBytesUploaded: 0, tiledGaussianPasses: 0, directGaussianPasses: 0, gaussianInputReads: 0 };
       const allocate = (size, usage, label) => {
         if (reserved + size > budget || size > device.limits.maxBufferSize) throw new RangeError('Resident GPU memory budget exceeded.');
         const buffer = device.createBuffer({ size, usage, label: 'ImageSpace ' + label });
@@ -286,8 +341,12 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
             let total = 0; const weights = [];
             for (let i = -radius; i <= radius; i++) { const w = Math.exp(-i * i / (2 * sigma * sigma)); weights.push(w); total += w; }
             weights.forEach((w, i) => { floats[8 + i] = w / total; });
-            plan.push({ name: 'horizontal', input, output: scratch, slot });
-            plan.push({ name: 'vertical', input: scratch, output, slot });
+            // Tiny images/small radii avoid barrier and redundant halo overhead.
+            // Auto is a conservative heuristic, not hardware-specific autotuning.
+            const tiled = blurStrategy === 'tiled' ||
+              (blurStrategy === 'auto' && radius >= 6 && width * height >= 4096);
+            plan.push({ name: tiled ? 'tiledHorizontal' : 'horizontal', input, output: scratch, slot, radius });
+            plan.push({ name: tiled ? 'tiledVertical' : 'vertical', input: scratch, output, slot, radius });
           } else plan.push({ name: op.kind === 'Pixelate' ? 'pixelate' : 'point', input, output, slot, size: integers[6] });
           input = output; slot++; index = end;
         }
@@ -308,7 +367,22 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
           const pass = encoder.beginComputePass();
           pass.setPipeline(pipelines[op.name]); pass.setBindGroup(0, binding, [op.slot * stride]);
           if (op.name === 'pixelate') pass.dispatchWorkgroups(Math.ceil(width / op.size), Math.ceil(height / op.size));
-          else pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+          else if (op.name === 'tiledHorizontal' || op.name === 'tiledVertical') {
+            const horizontal = op.name === 'tiledHorizontal';
+            const groupsX = Math.ceil(width / (horizontal ? 32 : 4));
+            const groupsY = Math.ceil(height / (horizontal ? 4 : 32));
+            pass.dispatchWorkgroups(groupsX, groupsY);
+            stats.tiledGaussianPasses++;
+            // Algorithmic shader input loads, INCLUDING clamped halo/tail loads.
+            // This is not a hardware counter or a count of physical DRAM accesses.
+            stats.gaussianInputReads += groupsX * groupsY * (32 + 2 * op.radius) * 4;
+          } else {
+            pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+            if (op.name === 'horizontal' || op.name === 'vertical') {
+              stats.directGaussianPasses++;
+              stats.gaussianInputReads += width * height * (2 * op.radius + 1);
+            }
+          }
           pass.end(); stats.dispatches++;
           if (op.name === 'fused') stats.fusedPasses++;
         }
@@ -364,7 +438,7 @@ fn main(@builtin(workgroup_id) group:vec3u,@builtin(local_invocation_index) lane
     apply: (bytes, width, height, kind, amount = 0, secondary = 0) => applyChain(bytes, width, height, [{ kind, amount, secondary }]),
     supports: kind => kinds.has(kind),
     describe: () => ({ available: !!current, backend: description, maximumBufferSize: current?.device.limits.maxBufferSize ?? 0,
-      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? 5 : 0 }),
+      residentBytes: reserved, residentBudgetBytes: budget, liveSessions: sessions.size, pipelineCount: current ? 7 : 0 }),
     shaderSource: pointCode,
     createHandle: async (base64, width, height) => {
       const session = await createSession(from64(base64), width, height);
