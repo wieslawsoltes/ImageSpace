@@ -8,6 +8,7 @@ public sealed class PropertyPanel : UserControl, IDisposable
     private EditorSession? _session;
     private readonly Dictionary<(LayerKind?, AdjustmentKind), BasicPropertiesEditor> _basic = [];
     private ToneAdjustmentEditor? _curves, _levels;
+    private ColorAdjustmentEditor? _mixer, _exposure;
     private MaskPropertiesEditor? _mask;
     private UIElement? _current;
     private double _height;
@@ -45,7 +46,9 @@ public sealed class PropertyPanel : UserControl, IDisposable
         var layer = _session.Document.ActiveLayer;
         var maskEditing = _session.Document.EditMask && layer?.Mask is not null;
         var tone = !maskEditing && layer is { Kind: LayerKind.Adjustment, Adjustment: AdjustmentKind.Curves or AdjustmentKind.Levels };
-        var height = maskEditing ? (layer!.MaskLinked ? 352 : 452) : tone ? (layer!.Adjustment == AdjustmentKind.Levels ? 470 : 414) : 224;
+        var color = !maskEditing && layer is { Kind: LayerKind.Adjustment, Adjustment: AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure };
+        var height = maskEditing ? (layer!.MaskLinked ? 352 : 452) : tone ? (layer!.Adjustment == AdjustmentKind.Levels ? 470 : 414)
+            : color ? (layer!.Adjustment == AdjustmentKind.ChannelMixer ? 390 : 292) : 224;
         if (_height != height) { _height = height; PreferredHeightChanged?.Invoke(height); }
         UIElement next;
         if (maskEditing)
@@ -57,8 +60,7 @@ public sealed class PropertyPanel : UserControl, IDisposable
                 _mask.PreviewChanged += mode => MaskPreviewChanged?.Invoke(mode);
                 InspectorBuilds++;
             }
-            _mask.Bind(_session, layer!.Id);
-            next = _mask;
+            _mask.Bind(_session, layer!.Id); next = _mask;
         }
         else if (tone)
         {
@@ -70,8 +72,19 @@ public sealed class PropertyPanel : UserControl, IDisposable
                 if (layer.Adjustment == AdjustmentKind.Curves) _curves = editor; else _levels = editor;
                 InspectorBuilds++;
             }
-            editor.Bind(_session, layer.Id, Renderer);
-            next = editor;
+            editor.Bind(_session, layer.Id, Renderer); next = editor;
+        }
+        else if (color)
+        {
+            var editor = layer!.Adjustment == AdjustmentKind.ChannelMixer ? _mixer : _exposure;
+            if (editor is null)
+            {
+                editor = new ColorAdjustmentEditor(layer.Adjustment, () => PreviewInvalidated?.Invoke());
+                editor.Error += message => Error?.Invoke(message);
+                if (layer.Adjustment == AdjustmentKind.ChannelMixer) _mixer = editor; else _exposure = editor;
+                InspectorBuilds++;
+            }
+            editor.Bind(_session, layer.Id); next = editor;
         }
         else
         {
@@ -81,23 +94,19 @@ public sealed class PropertyPanel : UserControl, IDisposable
                 editor = new BasicPropertiesEditor(key.Item1, key.Item2);
                 editor.Error += message => Error?.Invoke(message);
                 editor.TextEditRequested += value => TextEditRequested?.Invoke(value);
-                _basic.Add(key, editor);
-                InspectorBuilds++;
+                _basic.Add(key, editor); InspectorBuilds++;
             }
-            editor.Bind(_session);
-            next = editor;
+            editor.Bind(_session); next = editor;
         }
         if (!ReferenceEquals(_current, next))
         {
-            _body.Children.Clear();
-            _body.Children.Add(next);
-            _current = next;
+            _body.Children.Clear(); _body.Children.Add(next); _current = next;
         }
     }
 
     public new void Dispose()
     {
-        _curves?.Dispose(); _levels?.Dispose();
+        _curves?.Dispose(); _levels?.Dispose(); _mixer?.Dispose(); _exposure?.Dispose();
         _body.Children.Clear(); _basic.Clear();
         _current = null; _mask = null; _session = null;
     }

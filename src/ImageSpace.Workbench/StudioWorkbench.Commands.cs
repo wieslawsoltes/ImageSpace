@@ -57,6 +57,8 @@ public sealed partial class StudioWorkbench
                 Line();
                 Item("Curves adjustment layer", "Ctrl+M", () => AddAdjustment(AdjustmentKind.Curves));
                 Item("Levels adjustment layer", "Ctrl+L", () => AddAdjustment(AdjustmentKind.Levels));
+                Item("Channel Mixer adjustment layer", "", () => AddAdjustment(AdjustmentKind.ChannelMixer));
+                Item("Exposure adjustment layer", "", () => AddAdjustment(AdjustmentKind.Exposure));
                 Item("Brightness / Contrast…", "", () => _ = FilterDialogAsync(FilterKind.BrightnessContrast), editable && pixels);
                 Item("Saturation…", "", () => _ = FilterDialogAsync(FilterKind.Saturation), editable && pixels);
                 Item("Invert", "Ctrl+I", () => _ = ApplyFilterAsync(FilterKind.Invert), editable && pixels);
@@ -87,8 +89,7 @@ public sealed partial class StudioWorkbench
                 Item("New adjustment layer…", "", () => ShowAdjustmentMenu(anchor));
                 Item(active?.Locked == true ? "Unlock layer" : "Lock layer", "", () => Run(() => Session.Execute("Layer lock", document =>
                 {
-                    if (document.ActiveLayer is { } layer)
-                        layer.Locked = !layer.Locked;
+                    if (document.ActiveLayer is { } layer) layer.Locked = !layer.Locked;
                 })), has);
                 break;
             case "Type":
@@ -155,6 +156,7 @@ public sealed partial class StudioWorkbench
                 Item("Features and compatibility", "", () => _ = CapabilitiesAsync());
                 Item("Applying masks and rendering", "", () => _ = ShowTextAsync("Applying masks and rendering", MaskApplicationHelp));
                 Item("Clipping masks and compositing", "", () => _ = ShowTextAsync("Clipping masks", ClippingHelp));
+                Item("Channel Mixer and Exposure", "", () => _ = ShowTextAsync("Channel Mixer and Exposure", ColorAdjustmentHelp));
                 Item("Filter Gallery and GPU residency", "", () => _ = ShowTextAsync("Filter Gallery", FilterGalleryHelp));
                 Item("Rendering diagnostics", "", () => _ = DiagnosticsAsync());
                 Item("About ImageSpace", "", () => _ = AboutAsync());
@@ -165,10 +167,15 @@ public sealed partial class StudioWorkbench
 
     private void ShowAdjustmentMenu(FrameworkElement anchor)
     {
-        AdjustmentKind[] kinds = [AdjustmentKind.Curves, AdjustmentKind.Levels, AdjustmentKind.BrightnessContrast,
-            AdjustmentKind.Saturation, AdjustmentKind.Invert, AdjustmentKind.Grayscale, AdjustmentKind.Sepia, AdjustmentKind.GaussianBlur];
-        Studio.Menu(anchor, kinds.Select(kind => (kind.ToString(), "", (Action)(() => AddAdjustment(kind)), true)));
+        AdjustmentKind[] kinds = [AdjustmentKind.Curves, AdjustmentKind.Levels, AdjustmentKind.ChannelMixer, AdjustmentKind.Exposure,
+            AdjustmentKind.BrightnessContrast, AdjustmentKind.Saturation, AdjustmentKind.Invert, AdjustmentKind.Grayscale,
+            AdjustmentKind.Sepia, AdjustmentKind.GaussianBlur];
+        Studio.Menu(anchor, kinds.Select(kind => (kind == AdjustmentKind.ChannelMixer ? "Channel Mixer" : kind.ToString(), "", (Action)(() => AddAdjustment(kind)), true)));
     }
 
-    private void AddAdjustment(AdjustmentKind kind) => Run(() => Session.AddAdjustment(kind));
+    private void AddAdjustment(AdjustmentKind kind) => Run(() =>
+    {
+        if (kind is AdjustmentKind.ChannelMixer or AdjustmentKind.Exposure) Session.AddColorAdjustment(kind);
+        else Session.AddAdjustment(kind);
+    });
 }
